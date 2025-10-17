@@ -335,6 +335,8 @@ export class HDLDatabase {
     /**
      * Semantic search using text query
      * Encodes query text and finds semantically similar sections
+     *
+     * Note: Uses Qwen/Qwen3-Embedding-0.6B (8192 token context, 768-dim embeddings)
      */
     async semanticSearchByText(
         queryText: string,
