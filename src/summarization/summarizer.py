@@ -2,7 +2,7 @@
 """
 Athens HDL MCP - AI Summarizer
 
-Uses Qwen3-0.6B for local CPU-based summarization of LRM content.
+Uses Qwen3-0.6B for local GPU/CPU-based summarization of LRM content.
 Optimized for technical documentation and context efficiency.
 """
 
@@ -10,13 +10,24 @@ import functools
 import sys
 from typing import List, Optional
 import json
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from transformers import AutoTokenizer, AutoModelForCausalLM
     import torch
+    from utils.gpu_utils import (
+        detect_device,
+        get_optimal_dtype,
+        print_device_info,
+        clear_gpu_cache
+    )
 except ImportError as e:
     print(f"Error: Failed to import transformers: {e}")
     print("Install with: pip install transformers torch")
+    print("Or run: npm run setup:gpu")
     sys.exit(1)
 
 
@@ -26,22 +37,29 @@ class LRMSummarizer:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
         """
         Initialize summarizer with Qwen3-0.6B model
-        
+
         Args:
             model_name: HuggingFace model identifier
         """
-        print(f"[Summarizer] Loading {model_name}...")
-        
+        print(f"[Summarizer] Loading {model_name}...", file=sys.stderr)
+
+        # Auto-detect device and optimal dtype
+        self.device = detect_device(verbose=False)
+        self.dtype = get_optimal_dtype(self.device)
+
+        print(f"[Summarizer] Device: {self.device.upper()}", file=sys.stderr)
+        print(f"[Summarizer] Precision: {self.dtype}", file=sys.stderr)
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=torch.float32,  # Use float32 for CPU
-            device_map="cpu",
+            torch_dtype=self.dtype,
+            device_map=self.device,
             low_cpu_mem_usage=True
         )
-        
+
         self.model.eval()  # Set to evaluation mode
-        print(f"[Summarizer] Model loaded successfully (CPU mode)")
+        print(f"[Summarizer] Model loaded successfully", file=sys.stderr)
     
     @functools.lru_cache(maxsize=200)
     def summarize_section(
@@ -93,26 +111,34 @@ Summary:"""
         
         # Generate summary
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        
+
+        # Move inputs to device
+        if self.device == 'cuda':
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
         with torch.no_grad():
             outputs = self.model.generate(
-                inputs.input_ids,
+                inputs.input_ids if self.device == 'cpu' else inputs['input_ids'],
                 max_new_tokens=max_length,
                 temperature=0.3,  # Low temperature for more focused output
                 do_sample=True,
                 top_p=0.9,
                 pad_token_id=self.tokenizer.eos_token_id
             )
-        
+
         # Decode and clean
         full_output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
+
         # Extract just the summary part (after the prompt)
         summary = full_output[len(prompt):].strip()
-        
+
         # Clean up
         summary = self._clean_summary(summary)
-        
+
+        # Clear GPU cache to prevent memory buildup
+        if self.device == 'cuda':
+            clear_gpu_cache()
+
         return summary
     
     def extract_key_points(
@@ -146,22 +172,26 @@ Key Points:
 •"""
         
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        
+
+        # Move inputs to device
+        if self.device == 'cuda':
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
         with torch.no_grad():
             outputs = self.model.generate(
-                inputs.input_ids,
+                inputs.input_ids if self.device == 'cpu' else inputs['input_ids'],
                 max_new_tokens=200,
                 temperature=0.3,
                 do_sample=True,
                 top_p=0.9,
                 pad_token_id=self.tokenizer.eos_token_id
             )
-        
+
         full_output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
+
         # Extract bullet points
         points_section = full_output[len(prompt)-1:].strip()  # -1 to keep the • we added
-        
+
         # Split by bullet markers
         points = []
         for line in points_section.split('\n'):
@@ -171,20 +201,24 @@ Key Points:
                 if line.startswith(marker):
                     line = line[1:].strip()
                     break
-            
+
             # Skip empty or very short lines
             if len(line) < 10:
                 continue
-            
+
             # Clean up
             line = self._clean_summary(line)
-            
+
             if line:
                 points.append(line)
-            
+
             if len(points) >= max_points:
                 break
-        
+
+        # Clear GPU cache
+        if self.device == 'cuda':
+            clear_gpu_cache()
+
         return points[:max_points]
     
     def explain_code(
@@ -214,21 +248,29 @@ Code:
 Explanation:"""
         
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        
+
+        # Move inputs to device
+        if self.device == 'cuda':
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
         with torch.no_grad():
             outputs = self.model.generate(
-                inputs.input_ids,
+                inputs.input_ids if self.device == 'cpu' else inputs['input_ids'],
                 max_new_tokens=max_length,
                 temperature=0.3,
                 do_sample=True,
                 top_p=0.9,
                 pad_token_id=self.tokenizer.eos_token_id
             )
-        
+
         full_output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         explanation = full_output[len(prompt):].strip()
         explanation = self._clean_summary(explanation)
-        
+
+        # Clear GPU cache
+        if self.device == 'cuda':
+            clear_gpu_cache()
+
         return explanation
     
     def _clean_summary(self, text: str) -> str:

@@ -20,41 +20,63 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 from datetime import datetime
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 try:
     from sentence_transformers import SentenceTransformer
     import torch
+    from utils.gpu_utils import (
+        detect_device,
+        get_gpu_info,
+        get_optimal_dtype,
+        get_optimal_batch_size,
+        print_device_info,
+        get_gpu_memory_info,
+        clear_gpu_cache
+    )
 except ImportError as e:
     print(f"Error: Required package not installed: {e}")
     print("Install with: pip install sentence-transformers>=2.2.0 torch")
+    print("Or run: npm run setup:gpu")
     sys.exit(1)
 
 
 class EmbeddingGenerator:
     """Generate and store embeddings for LRM sections"""
 
-    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-0.6B'):
+    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-0.6B', device: Optional[str] = None):
         self.db_path = Path(db_path)
         self.model_name = model_name
         self.model = None
         self.conn = None
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        
+
+        # Auto-detect device or use override
+        self.device = device if device else detect_device(verbose=False)
+        self.dtype = get_optimal_dtype(self.device)
+
         if not self.db_path.exists():
             raise FileNotFoundError(f"Database not found: {db_path}")
     
     def load_model(self):
         """Load the sentence transformer model"""
         print(f"Loading model: {self.model_name}...")
-        print(f"  Device: {self.device}")
+        print(f"  Device: {self.device.upper()}")
+        print(f"  Precision: {self.dtype}")
+
+        if self.device == 'cuda':
+            gpu_info = get_gpu_info()
+            print(f"  GPU: {gpu_info['name']} ({gpu_info['memory_gb']:.1f} GB)")
+
         start_time = time.time()
-        
+
         # Load model with trust_remote_code for Qwen models
         self.model = SentenceTransformer(
             self.model_name,
             device=self.device,
             trust_remote_code=True
         )
-        
+
         duration = time.time() - start_time
         print(f"✓ Model loaded in {duration:.1f}s")
         print(f"  Embedding dimension: {self.model.get_sentence_embedding_dimension()}")
@@ -115,21 +137,25 @@ class EmbeddingGenerator:
             int(time.time())
         ))
     
-    def process_sections(self, language: Optional[str] = None, batch_size: int = 32):
+    def process_sections(self, language: Optional[str] = None, batch_size: Optional[int] = None):
         """Process all sections and generate embeddings"""
         sections = self.get_sections_without_embeddings(language)
-        
+
         if not sections:
             lang_str = f"for {language}" if language else ""
             print(f"No sections need embeddings {lang_str}")
             return 0
-        
+
+        # Auto-adjust batch size based on device if not specified
+        if batch_size is None:
+            batch_size = get_optimal_batch_size(32, self.device)
+
         total = len(sections)
         print(f"\nGenerating embeddings for {total} sections...")
         if language:
             print(f"Language: {language}")
         print(f"Model: {self.model_name}")
-        print(f"Batch size: {batch_size}\n")
+        print(f"Batch size: {batch_size} ({'auto-adjusted for GPU' if self.device == 'cuda' else 'CPU default'})\n")
         
         start_time = time.time()
         processed = 0
@@ -138,7 +164,11 @@ class EmbeddingGenerator:
         for i in range(0, total, batch_size):
             batch = sections[i:i + batch_size]
             batch_start = time.time()
-            
+
+            # Show GPU memory before batch (if using GPU)
+            if self.device == 'cuda':
+                used_before, total_mem = get_gpu_memory_info()
+
             # Prepare texts for batch encoding
             texts = []
             for section_id, section_num, title, content, lang in batch:
@@ -147,43 +177,61 @@ class EmbeddingGenerator:
                 # Use more context than the previous all-mpnet-base-v2 model (512 tokens)
                 text = f"{title}\n\n{content[:6000]}"
                 texts.append(text)
-            
+
             # Generate embeddings in batch
             # normalize_embeddings=True improves retrieval performance
             embeddings = self.model.encode(
-                texts, 
+                texts,
                 convert_to_numpy=True,
                 show_progress_bar=False,
                 normalize_embeddings=True
             )
-            
+
             # Store embeddings
             for j, (section_id, section_num, title, content, lang) in enumerate(batch):
                 embedding = embeddings[j].tolist()
                 self.store_embedding(section_id, lang, embedding)
                 processed += 1
-            
+
             # Commit batch
             self.conn.commit()
-            
+
+            # Clear GPU cache periodically to prevent memory buildup
+            if self.device == 'cuda' and i % (batch_size * 4) == 0:
+                clear_gpu_cache()
+
             batch_duration = time.time() - batch_start
             batch_rate = len(batch) / batch_duration
-            
+
             # Progress report
             elapsed = time.time() - start_time
             rate = processed / elapsed
             remaining = (total - processed) / rate if rate > 0 else 0
-            
-            print(f"Progress: {processed}/{total} ({processed/total*100:.1f}%) | "
-                  f"Batch: {batch_rate:.1f} sections/s | "
-                  f"ETA: {remaining:.0f}s")
+
+            progress_msg = (f"Progress: {processed}/{total} ({processed/total*100:.1f}%) | "
+                           f"Batch: {batch_rate:.1f} sections/s | "
+                           f"ETA: {remaining:.0f}s")
+
+            # Add GPU memory info if available
+            if self.device == 'cuda':
+                used_after, _ = get_gpu_memory_info()
+                progress_msg += f" | GPU: {used_after:.1f}GB/{total_mem:.1f}GB"
+
+            print(progress_msg)
         
         total_duration = time.time() - start_time
         avg_rate = processed / total_duration
-        
+
         print(f"\n✓ Generated {processed} embeddings in {total_duration:.1f}s")
         print(f"  Average rate: {avg_rate:.1f} sections/s")
-        
+
+        # Show GPU speedup estimate
+        if self.device == 'cuda':
+            # Estimate CPU time would be ~15x slower
+            estimated_cpu_time = total_duration * 15
+            print(f"  Estimated CPU time: {estimated_cpu_time/60:.1f} minutes (~15x slower)")
+            print(f"  GPU speedup: ~{estimated_cpu_time/total_duration:.1f}x faster")
+
         return processed
     
     def get_embedding_stats(self) -> dict:
@@ -219,16 +267,19 @@ class EmbeddingGenerator:
             'model': self.model_name
         }
     
-    def run(self, language: Optional[str] = None, batch_size: int = 32):
+    def run(self, language: Optional[str] = None, batch_size: Optional[int] = None):
         """Main execution"""
         print("=" * 70)
         print("Athens HDL MCP - Embedding Generator")
         print("=" * 70)
-        
+
         try:
+            # Show device info
+            print_device_info()
+
             # Load model
             self.load_model()
-            
+
             # Connect to database
             print(f"\nConnecting to database: {self.db_path}")
             self.connect_db()
@@ -288,13 +339,19 @@ def main():
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=32,
-        help='Batch size for encoding (default: 32)'
+        default=None,
+        help='Batch size for encoding (default: auto-detect based on device - 32 for CPU, 128 for GPU)'
     )
-    
+    parser.add_argument(
+        '--device',
+        choices=['cpu', 'cuda'],
+        default=None,
+        help='Force device (default: auto-detect)'
+    )
+
     args = parser.parse_args()
-    
-    generator = EmbeddingGenerator(args.db, args.model)
+
+    generator = EmbeddingGenerator(args.db, args.model, device=args.device)
     generator.run(args.language, args.batch_size)
 
 

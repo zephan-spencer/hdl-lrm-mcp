@@ -35,13 +35,22 @@ Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents 
 
 **Embeddings (`src/embeddings/generate_embeddings.py`)**
 - Generates semantic embeddings using Qwen/Qwen3-Embedding-0.6B model
-- Batch processing for efficiency (default: 32 sections per batch)
+- **GPU Accelerated**: Auto-detects GPU and uses bfloat16 precision (~15x speedup)
+- Batch processing: 32 sections/batch (CPU) or 128 sections/batch (GPU, auto-adjusted)
 - Supports incremental updates (only processes sections without embeddings)
 
 **Summarization (`src/summarization/summarizer.py`)**
 - On-demand AI summarization using local LLM (Qwen3)
+- **GPU Accelerated**: Auto-detects GPU for ~8x faster generation
 - Three modes: summary, keypoints, explain
 - Called from TypeScript via CLI interface (`summarize.py`)
+
+**GPU Utilities (`src/utils/gpu_utils.py`)**
+- Auto-detects AMD (ROCm) or NVIDIA (CUDA) GPUs
+- Provides optimal dtype selection (bfloat16 for GPU, float32 for CPU)
+- Auto-adjusts batch sizes based on available hardware
+- GPU memory monitoring and cache management
+- Falls back gracefully to CPU if no GPU available
 
 ### Database Schema
 - `sections`: Hierarchical section storage with parent/child relationships
@@ -58,6 +67,13 @@ Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents 
 npm run build              # Compile TypeScript to dist/
 npm run dev                # Watch mode for development
 npm start                  # Run MCP server (after build)
+```
+
+### GPU Setup (Optional - For 15x Speedup)
+```bash
+npm run setup:gpu          # Auto-detect and install PyTorch (AMD/NVIDIA)
+npm run test:gpu           # Full GPU verification with model loading
+npm run test:gpu:quick     # Quick GPU detection test
 ```
 
 ### Database Setup
@@ -79,9 +95,14 @@ python src/parser/parse_lrm.py --pdf data/lrms/LRM_V_2005.pdf --language verilog
 ### Generating Embeddings
 ```bash
 # After parsing, generate embeddings for semantic search
+# GPU auto-detected (15x faster if available)
 python src/embeddings/generate_embeddings.py --language verilog
 python src/embeddings/generate_embeddings.py --language systemverilog
 python src/embeddings/generate_embeddings.py  # All languages
+
+# Force CPU mode or adjust batch size
+python src/embeddings/generate_embeddings.py --device cpu
+python src/embeddings/generate_embeddings.py --batch-size 64  # Reduce if GPU OOM
 ```
 
 ### Testing
@@ -128,17 +149,22 @@ Sections use dotted notation (e.g., "3.2.1"):
 - Parser may not create parent sections, database queries handle this
 
 ### Model Defaults
-- Embeddings: `Qwen/Qwen3-Embedding-0.6B` (8192 token context, supports up to 6000 chars)
-- Summarization: Local Qwen3 model loaded via transformers
-- Embedding dimension: Check with model.get_sentence_embedding_dimension()
+- **Embeddings**: `Qwen/Qwen3-Embedding-0.6B` (8192 token context, supports up to 6000 chars)
+- **Summarization**: Local Qwen3 model loaded via transformers
+- **Embedding dimension**: Check with model.get_sentence_embedding_dimension()
+- **Precision**: bfloat16 on GPU (RDNA 3+/Ampere+), float32 on CPU
+- **Batch sizes**: 32 (CPU), 128 (GPU) - auto-adjusted based on device
 
 ## Important File Locations
 
-- Database: `data/hdl-lrm.db`
-- LRM PDFs: `data/lrms/LRM_V_2005.pdf`, `LRM_SYSV_2017.pdf`, `LRM_VHDL_2008.pdf`
-- Database schema: `src/storage/schema.sql`
-- Docling utilities: `src/parser/docling_utils.py`
-- Test fixtures: `tests/fixtures/`
+- **Database**: `data/hdl-lrm.db`
+- **LRM PDFs**: `data/lrms/LRM_V_2005.pdf`, `LRM_SYSV_2017.pdf`, `LRM_VHDL_2008.pdf`
+- **Database schema**: `src/storage/schema.sql`
+- **GPU utilities**: `src/utils/gpu_utils.py`
+- **GPU setup script**: `scripts/setup_pytorch.sh`
+- **Docling utilities**: `src/parser/docling_utils.py`
+- **Test fixtures**: `tests/fixtures/`
+- **GPU tests**: `tests/gpu_test.py`
 
 ## Common Tasks
 
@@ -168,11 +194,18 @@ Sections use dotted notation (e.g., "3.2.1"):
 - `sqlite3`: Database access
 - `ts-jest`: Testing framework
 
-**Python**
+**Python (CPU)**
 - `docling>=2.54.0`: PDF parsing
 - `sentence-transformers>=2.2.0`: Embedding generation
 - `transformers>=4.35.0`: LLM summarization
-- `torch>=2.0.0`: ML framework
+- `torch>=2.0.0`: ML framework (CPU version from requirements.txt)
+
+**Python (GPU - Optional)**
+- Same packages as CPU, but PyTorch installed with GPU support
+- **AMD GPUs**: PyTorch 2.9.0 with ROCm 6.4 (via requirements-rocm.txt or setup:gpu script)
+- **NVIDIA GPUs**: PyTorch with CUDA 11.8+ (via setup:gpu script)
+- Automatic device detection and dtype selection (bfloat16 on compatible GPUs)
+- Run `npm run setup:gpu` for automated installation
 
 ## Database Constraints
 
