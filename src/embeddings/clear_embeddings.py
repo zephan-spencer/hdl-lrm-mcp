@@ -6,9 +6,10 @@ This script removes embeddings for a specified model, optionally filtered by lan
 Useful when upgrading embedding models or regenerating embeddings with different parameters.
 
 Usage:
+    python clear_embeddings.py  # Clear all embeddings (default)
     python clear_embeddings.py --model Qwen/Qwen3-Embedding-0.6B
     python clear_embeddings.py --model Qwen/Qwen3-Embedding-0.6B --language verilog
-    python clear_embeddings.py --all  # Clear all embeddings
+    python clear_embeddings.py --all  # Explicitly clear all embeddings
 """
 
 import argparse
@@ -123,19 +124,19 @@ def main():
     parser.add_argument(
         '--all',
         action='store_true',
-        help='Clear ALL embeddings (ignores --model and --language)'
+        help='Clear ALL embeddings (default if no --model specified; ignores --model and --language)'
     )
 
     args = parser.parse_args()
 
     # Validation
-    if not args.all and not args.model:
-        parser.error("Either --model or --all must be specified")
-
     if args.all and (args.model or args.language):
         parser.error("--all cannot be used with --model or --language")
 
-    return clear_embeddings(args.db, args.model, args.language, args.all)
+    # Default to clearing all embeddings if no model specified
+    clear_all = args.all or (not args.model)
+
+    return clear_embeddings(args.db, args.model, args.language, clear_all)
 
 
 if __name__ == '__main__':
