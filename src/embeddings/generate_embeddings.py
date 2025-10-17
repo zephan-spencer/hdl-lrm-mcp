@@ -3,11 +3,12 @@
 Generate semantic embeddings for HDL LRM sections using sentence-transformers.
 
 This script generates embeddings for all sections in the database that don't
-already have embeddings for the specified model.
+already have embeddings for the specified model. Large sections (>6000 chars)
+are automatically chunked with 10% overlap, and chunk embeddings are averaged.
 
 Usage:
     python generate_embeddings.py --language verilog
-    python generate_embeddings.py --language systemverilog --model Qwen/Qwen3-Embedding-0.6B
+    python generate_embeddings.py --language systemverilog --model Qwen/Qwen3-Embedding-4B
     python generate_embeddings.py  # Process all languages
 """
 
@@ -16,6 +17,7 @@ import sqlite3
 import json
 import time
 import sys
+import numpy as np
 from pathlib import Path
 from typing import List, Tuple, Optional
 from datetime import datetime
@@ -42,10 +44,45 @@ except ImportError as e:
     sys.exit(1)
 
 
+def chunk_text(text: str, chunk_size: int = 6000, overlap: int = 600) -> List[str]:
+    """
+    Split text into overlapping chunks to handle content larger than model context window.
+
+    Args:
+        text: Text to chunk
+        chunk_size: Maximum characters per chunk (default 6000, safe for 8192 token models)
+        overlap: Number of characters to overlap between chunks (default 600, ~10% overlap)
+
+    Returns:
+        List of text chunks. If text is smaller than chunk_size, returns [text].
+    """
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+
+    while start < len(text):
+        # Get chunk from start to start+chunk_size
+        end = min(start + chunk_size, len(text))
+        chunk = text[start:end]
+        chunks.append(chunk)
+
+        # Move start forward by (chunk_size - overlap)
+        # This creates overlap between chunks for context continuity
+        start += chunk_size - overlap
+
+        # Stop if we've reached the end
+        if end == len(text):
+            break
+
+    return chunks
+
+
 class EmbeddingGenerator:
     """Generate and store embeddings for LRM sections"""
 
-    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-0.6B', device: Optional[str] = None):
+    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-4B', device: Optional[str] = None):
         self.db_path = Path(db_path)
         self.model_name = model_name
         self.model = None
@@ -169,36 +206,66 @@ class EmbeddingGenerator:
             if self.device == 'cuda':
                 used_before, total_mem = get_gpu_memory_info()
 
-            # Prepare texts for batch encoding
-            texts = []
-            for section_id, section_num, title, content, lang in batch:
-                # Combine title and content for embedding
-                # Qwen3-Embedding-0.6B supports up to 8192 tokens (~6000 chars)
-                # Use more context than the previous all-mpnet-base-v2 model (512 tokens)
-                text = f"{title}\n\n{content[:6000]}"
-                texts.append(text)
+            # Prepare texts for batch encoding with chunking support
+            # Track chunks and which section they belong to
+            all_chunks = []
+            chunk_to_section_map = []  # Maps chunk index to section index in batch
 
-            # Generate embeddings in batch
+            for section_idx, (section_id, section_num, title, content, lang) in enumerate(batch):
+                # Combine title and content for embedding (use full content, no truncation)
+                # Qwen3-Embedding-4B supports up to 8192 tokens (~30000 chars)
+                text = f"{title}\n\n{content}"
+
+                # Chunk text if it's too large
+                chunks = chunk_text(text, chunk_size=6000, overlap=600)
+
+                # Add all chunks and track which section they belong to
+                for chunk in chunks:
+                    all_chunks.append(chunk)
+                    chunk_to_section_map.append(section_idx)
+
+            # Generate embeddings for all chunks in batch
             # Use torch.no_grad() to prevent gradient graph building (inference best practice)
             with torch.no_grad():
                 # normalize_embeddings=True improves retrieval performance
-                embeddings = self.model.encode(
-                    texts,
+                chunk_embeddings = self.model.encode(
+                    all_chunks,
                     convert_to_numpy=True,
                     show_progress_bar=False,
                     normalize_embeddings=True
                 )
 
+            # Group chunks by section and average to get one embedding per section
+            section_embeddings = []
+            current_section_idx = 0
+            chunks_for_current_section = []
+
+            for chunk_idx, section_idx in enumerate(chunk_to_section_map):
+                if section_idx != current_section_idx:
+                    # New section encountered - average the previous section's chunks
+                    avg_embedding = np.mean(chunks_for_current_section, axis=0)
+                    section_embeddings.append(avg_embedding)
+                    chunks_for_current_section = []
+                    current_section_idx = section_idx
+
+                chunks_for_current_section.append(chunk_embeddings[chunk_idx])
+
+            # Don't forget the last section
+            if chunks_for_current_section:
+                avg_embedding = np.mean(chunks_for_current_section, axis=0)
+                section_embeddings.append(avg_embedding)
+
             # Store embeddings and free memory immediately
             for j, (section_id, section_num, title, content, lang) in enumerate(batch):
-                embedding = embeddings[j].tolist()
+                embedding = section_embeddings[j].tolist()
                 self.store_embedding(section_id, lang, embedding)
                 processed += 1
 
             # Explicitly delete tensors to free GPU memory immediately
             # Don't rely on Python's garbage collector for GPU memory
-            del embeddings
-            del texts
+            del chunk_embeddings
+            del all_chunks
+            del section_embeddings
 
             # Commit batch
             self.conn.commit()
@@ -340,8 +407,8 @@ def main():
     )
     parser.add_argument(
         '--model',
-        default='Qwen/Qwen3-Embedding-0.6B',
-        help='Sentence transformer model to use (default: Qwen/Qwen3-Embedding-0.6B)'
+        default='Qwen/Qwen3-Embedding-4B',
+        help='Sentence transformer model to use (default: Qwen/Qwen3-Embedding-4B)'
     )
     parser.add_argument(
         '--batch-size',
