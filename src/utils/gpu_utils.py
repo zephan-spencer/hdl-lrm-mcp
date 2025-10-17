@@ -125,18 +125,14 @@ def get_optimal_batch_size(base_size: int, device: str) -> int:
     Get optimal batch size based on device
 
     Args:
-        base_size: Base batch size for CPU
+        base_size: Base batch size
         device: 'cuda' or 'cpu'
 
     Returns:
-        Adjusted batch size (4x for GPU)
+        Base batch size (same for both CPU and GPU for memory safety)
     """
-    if device == 'cuda':
-        # GPU can handle larger batches
-        # RX 9070 XT has 16GB VRAM - can easily handle 4x batch size
-        return base_size * 4
-    else:
-        return base_size
+    # Use same batch size for both CPU and GPU to avoid OOM issues
+    return base_size
 
 
 def print_device_info():

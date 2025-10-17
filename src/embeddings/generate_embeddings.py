@@ -192,7 +192,7 @@ class EmbeddingGenerator:
         if language:
             print(f"Language: {language}")
         print(f"Model: {self.model_name}")
-        print(f"Batch size: {batch_size} ({'auto-adjusted for GPU' if self.device == 'cuda' else 'CPU default'})\n")
+        print(f"Batch size: {batch_size}\n")
         
         start_time = time.time()
         processed = 0
@@ -414,7 +414,7 @@ def main():
         '--batch-size',
         type=int,
         default=None,
-        help='Batch size for encoding (default: auto-detect based on device - 32 for CPU, 128 for GPU)'
+        help='Batch size for encoding (default: 32)'
     )
     parser.add_argument(
         '--device',

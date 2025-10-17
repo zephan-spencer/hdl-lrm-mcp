@@ -37,7 +37,7 @@ Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents 
 - Generates semantic embeddings using Qwen/Qwen3-Embedding-4B model
 - **GPU Accelerated**: Auto-detects GPU and uses bfloat16 precision (~15x speedup)
 - **Automatic chunking**: Large sections (>6000 chars) split with 10% overlap, embeddings averaged
-- Batch processing: 32 sections/batch (CPU) or 128 sections/batch (GPU, auto-adjusted)
+- Batch processing: 32 sections/batch (default for memory safety)
 - Supports incremental updates (only processes sections without embeddings)
 
 **Summarization (`src/summarization/summarizer.py`)**
@@ -155,7 +155,7 @@ Sections use dotted notation (e.g., "3.2.1"):
 - **Summarization**: Local Qwen3 model loaded via transformers
 - **Embedding dimension**: Check with model.get_sentence_embedding_dimension()
 - **Precision**: bfloat16 on GPU (RDNA 3+/Ampere+), float32 on CPU
-- **Batch sizes**: 32 (CPU), 128 (GPU) - auto-adjusted based on device
+- **Batch size**: 32 (default for both CPU and GPU, for memory safety)
 
 ## Important File Locations
 
