@@ -1,0 +1,126 @@
+# HDL LRM MCP - Git Ignore File
+
+# ============================================================================
+# Node.js / TypeScript
+# ============================================================================
+node_modules/
+dist/
+*.tsbuildinfo
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Build outputs
+build/
+coverage/
+
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.cover
+
+# Python tools
+*.egg-info/
+dist-python/
+.eggs/
+
+# ============================================================================
+# Database Files
+# ============================================================================
+# Ignore all database files except schema
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+!schema.sql
+
+# Test databases
+data/test*.db
+
+# ============================================================================
+# IDE / Editor
+# ============================================================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code specific
+.cline_storage/
+.claude/settings.local.json
+
+# ============================================================================
+# OS
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# Logs
+# ============================================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================================================================
+# Temporary Files
+# ============================================================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# ============================================================================
+# Model Downloads (HuggingFace Cache)
+# ============================================================================
+.cache/
+models/
+*.gguf
+*.safetensors
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+# Test snippets (PDFs created for testing)
+data/test_snippets/*.pdf
+
+# Backup files
+*.backup
+*.old
