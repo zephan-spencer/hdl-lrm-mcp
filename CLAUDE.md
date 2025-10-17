@@ -34,7 +34,7 @@ Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents 
 - Critical: Uses `item.prov[0].page_no` for 100% page accuracy
 
 **Embeddings (`src/embeddings/generate_embeddings.py`)**
-- Generates semantic embeddings using Qwen/Qwen3-Embedding-4B model
+- Generates semantic embeddings using Qwen/Qwen3-Embedding-0.6B model
 - **GPU Accelerated**: Auto-detects GPU and uses bfloat16 precision (~15x speedup)
 - **Automatic chunking**: Large sections (>6000 chars) split with 10% overlap, embeddings averaged
 - Batch processing: 32 sections/batch (default for memory safety)
@@ -150,7 +150,7 @@ Sections use dotted notation (e.g., "3.2.1"):
 - Parser may not create parent sections, database queries handle this
 
 ### Model Defaults
-- **Embeddings**: `Qwen/Qwen3-Embedding-4B` (8192 token context, ~30000 chars max)
+- **Embeddings**: `Qwen/Qwen3-Embedding-0.6B` (8192 token context, ~6000 chars recommended)
 - **Chunking**: Sections >6000 chars auto-chunked with 10% overlap, embeddings averaged
 - **Summarization**: Local Qwen3 model loaded via transformers
 - **Embedding dimension**: Check with model.get_sentence_embedding_dimension()

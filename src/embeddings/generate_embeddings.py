@@ -8,7 +8,7 @@ are automatically chunked with 10% overlap, and chunk embeddings are averaged.
 
 Usage:
     python generate_embeddings.py --language verilog
-    python generate_embeddings.py --language systemverilog --model Qwen/Qwen3-Embedding-4B
+    python generate_embeddings.py --language systemverilog --model Qwen/Qwen3-Embedding-0.6B
     python generate_embeddings.py  # Process all languages
 """
 
@@ -82,7 +82,7 @@ def chunk_text(text: str, chunk_size: int = 6000, overlap: int = 600) -> List[st
 class EmbeddingGenerator:
     """Generate and store embeddings for LRM sections"""
 
-    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-4B', device: Optional[str] = None):
+    def __init__(self, db_path: str, model_name: str = 'Qwen/Qwen3-Embedding-0.6B', device: Optional[str] = None):
         self.db_path = Path(db_path)
         self.model_name = model_name
         self.model = None
@@ -213,7 +213,7 @@ class EmbeddingGenerator:
 
             for section_idx, (section_id, section_num, title, content, lang) in enumerate(batch):
                 # Combine title and content for embedding (use full content, no truncation)
-                # Qwen3-Embedding-4B supports up to 8192 tokens (~30000 chars)
+                # Qwen3-Embedding-0.6B supports up to 8192 tokens (~6000 chars)
                 text = f"{title}\n\n{content}"
 
                 # Chunk text if it's too large
@@ -407,8 +407,8 @@ def main():
     )
     parser.add_argument(
         '--model',
-        default='Qwen/Qwen3-Embedding-4B',
-        help='Sentence transformer model to use (default: Qwen/Qwen3-Embedding-4B)'
+        default='Qwen/Qwen3-Embedding-0.6B',
+        help='Sentence transformer model to use (default: Qwen/Qwen3-Embedding-0.6B)'
     )
     parser.add_argument(
         '--batch-size',
