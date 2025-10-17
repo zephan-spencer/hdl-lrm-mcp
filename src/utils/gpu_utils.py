@@ -79,18 +79,22 @@ def get_gpu_info() -> Dict[str, any]:
 
 def get_gpu_memory_info() -> Tuple[float, float]:
     """
-    Get current GPU memory usage
+    Get current GPU memory usage (includes PyTorch's reserved cache)
 
     Returns:
         Tuple of (used_gb, total_gb)
+        used_gb includes both allocated tensors AND PyTorch's memory cache
     """
     if not torch.cuda.is_available():
         return (0.0, 0.0)
 
-    allocated = torch.cuda.memory_allocated(0) / (1024**3)
+    # Use memory_reserved instead of memory_allocated
+    # memory_reserved shows actual GPU memory held by PyTorch (including cache)
+    # memory_allocated only shows active tensors (misleading during cache buildup)
+    reserved = torch.cuda.memory_reserved(0) / (1024**3)
     total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
 
-    return (allocated, total)
+    return (reserved, total)
 
 
 def get_optimal_dtype(device: str) -> torch.dtype:

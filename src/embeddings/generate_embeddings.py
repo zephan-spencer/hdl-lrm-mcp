@@ -179,25 +179,32 @@ class EmbeddingGenerator:
                 texts.append(text)
 
             # Generate embeddings in batch
-            # normalize_embeddings=True improves retrieval performance
-            embeddings = self.model.encode(
-                texts,
-                convert_to_numpy=True,
-                show_progress_bar=False,
-                normalize_embeddings=True
-            )
+            # Use torch.no_grad() to prevent gradient graph building (inference best practice)
+            with torch.no_grad():
+                # normalize_embeddings=True improves retrieval performance
+                embeddings = self.model.encode(
+                    texts,
+                    convert_to_numpy=True,
+                    show_progress_bar=False,
+                    normalize_embeddings=True
+                )
 
-            # Store embeddings
+            # Store embeddings and free memory immediately
             for j, (section_id, section_num, title, content, lang) in enumerate(batch):
                 embedding = embeddings[j].tolist()
                 self.store_embedding(section_id, lang, embedding)
                 processed += 1
 
+            # Explicitly delete tensors to free GPU memory immediately
+            # Don't rely on Python's garbage collector for GPU memory
+            del embeddings
+            del texts
+
             # Commit batch
             self.conn.commit()
 
-            # Clear GPU cache periodically to prevent memory buildup
-            if self.device == 'cuda' and i % (batch_size * 4) == 0:
+            # Clear GPU cache after every batch to prevent memory buildup
+            if self.device == 'cuda':
                 clear_gpu_cache()
 
             batch_duration = time.time() - batch_start
@@ -212,7 +219,7 @@ class EmbeddingGenerator:
                            f"Batch: {batch_rate:.1f} sections/s | "
                            f"ETA: {remaining:.0f}s")
 
-            # Add GPU memory info if available
+            # Add GPU memory info (shows reserved memory including PyTorch cache)
             if self.device == 'cuda':
                 used_after, _ = get_gpu_memory_info()
                 progress_msg += f" | GPU: {used_after:.1f}GB/{total_mem:.1f}GB"
