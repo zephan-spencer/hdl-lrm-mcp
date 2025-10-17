@@ -11,6 +11,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "init-db": "node --loader ts-node/esm src/storage/init-db.ts",
+    "parse": "npm run parse:verilog && npm run parse:systemverilog && npm run parse:vhdl",
     "parse:verilog": "python src/parser/parse_lrm.py --pdf data/lrms/LRM_V_2005.pdf --language verilog --output data/hdl-lrm.db",
     "parse:systemverilog": "python src/parser/parse_lrm.py --pdf data/lrms/LRM_SYSV_2017.pdf --language systemverilog --output data/hdl-lrm.db",
     "parse:vhdl": "python src/parser/parse_lrm.py --pdf data/lrms/LRM_VHDL_2008.pdf --language vhdl --output data/hdl-lrm.db",

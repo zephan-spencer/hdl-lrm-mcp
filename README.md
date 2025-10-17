@@ -78,7 +78,10 @@ ls data/lrms/  # Should show: LRM_V_2005.pdf, LRM_SYSV_2017.pdf, LRM_VHDL_2008.p
 # Activate virtual environment
 source .venv/bin/activate
 
-# Parse each language (takes 5-15 minutes per PDF)
+# Parse all languages at once (~20-45 minutes total)
+npm run parse
+
+# Or parse each language individually (takes 5-15 minutes per PDF)
 npm run parse:verilog       # Creates database with Verilog sections
 npm run parse:systemverilog # Adds SystemVerilog sections
 npm run parse:vhdl          # Adds VHDL sections
