@@ -19,7 +19,7 @@ Athens HDL MCP is an intelligent documentation server that makes HDL language re
 - **8,410 Code Examples** and 1,388 tables from official LRMs
 - **Fast Full-Text Search** with SQLite FTS5
 
-### Database Contents
+### What You'll Get After Setup
 
 | Language       | Sections | Code Examples | Tables |
 |----------------|----------|---------------|--------|
@@ -36,17 +36,26 @@ Athens HDL MCP is an intelligent documentation server that makes HDL language re
 - **Node.js** >= 18.0.0
 - **Python** >= 3.9
 - **uv** (Python package manager) - [Install uv](https://github.com/astral-sh/uv)
+- **LRM PDFs** - You need the official Language Reference Manual PDFs:
+  - IEEE Std 1364-2005 (Verilog)
+  - IEEE Std 1800-2017 (SystemVerilog)
+  - IEEE Std 1076-2008 (VHDL)
 
-### 1. Clone and Install
+  Place them in `data/lrms/` with these exact names:
+  - `LRM_V_2005.pdf`
+  - `LRM_SYSV_2017.pdf`
+  - `LRM_VHDL_2008.pdf`
+
+### 1. Clone and Install Dependencies
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/zephan-spencer/hdl-lrm-mcp.git
 cd hdl-lrm-mcp
 
 # Install Node.js dependencies
 npm install
 
-# Install Python dependencies
+# Create Python virtual environment and install dependencies
 uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt
@@ -58,15 +67,44 @@ uv pip install -r requirements.txt
 npm run build
 ```
 
-### 3. Generate Embeddings (Required for Semantic Search)
+### 3. Parse LRM PDFs (One-Time Setup)
 
-The database is included, but you need to generate embeddings for semantic search:
+**Important:** You must parse the PDFs before the server will work. This creates the database.
 
 ```bash
+# Ensure PDFs are in data/lrms/
+ls data/lrms/  # Should show: LRM_V_2005.pdf, LRM_SYSV_2017.pdf, LRM_VHDL_2008.pdf
+
 # Activate virtual environment
 source .venv/bin/activate
 
-# Generate embeddings for all languages (~2-3 hours)
+# Parse each language (takes 5-15 minutes per PDF)
+npm run parse:verilog       # Creates database with Verilog sections
+npm run parse:systemverilog # Adds SystemVerilog sections
+npm run parse:vhdl          # Adds VHDL sections
+
+# Or parse with custom PDFs:
+python src/parser/parse_lrm.py \
+  --pdf data/lrms/LRM_V_2005.pdf \
+  --language verilog \
+  --output data/hdl-lrm.db
+```
+
+**What this does:**
+- Uses Docling to extract sections, code examples, and tables
+- Creates `data/hdl-lrm.db` (SQLite database, ~79MB)
+- Achieves 100% page number accuracy
+- Shows progress: "✓ Parsed in X.Xs", "✓ Found N sections"
+
+### 4. Generate Embeddings (Required for Semantic Search)
+
+After parsing, generate embeddings for semantic search:
+
+```bash
+# Still in virtual environment
+source .venv/bin/activate
+
+# Generate embeddings for all languages (~2-3 hours total)
 python src/embeddings/generate_embeddings.py --language verilog
 python src/embeddings/generate_embeddings.py --language systemverilog
 python src/embeddings/generate_embeddings.py --language vhdl
@@ -75,7 +113,11 @@ python src/embeddings/generate_embeddings.py --language vhdl
 python src/embeddings/generate_embeddings.py
 ```
 
-**Note:** This downloads the Qwen3-Embedding-0.6B model (~2GB) and processes 5,266 sections. Progress is shown during generation.
+**What this does:**
+- Downloads Qwen3-Embedding-0.6B model (~2GB, first time only)
+- Processes 5,266 sections in batches
+- Shows progress: "Progress: X/Y (Z%) | Batch: N sections/s | ETA: Ts"
+- Grows database to ~120-150MB
 
 ---
 
