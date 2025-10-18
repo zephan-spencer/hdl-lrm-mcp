@@ -18,7 +18,9 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
         language,
         max_results = 5,
         format = 'json',
-        detail_level = 'minimal'
+        detail_level = 'minimal',
+        include_metadata = true,
+        verbose_errors = true
     } = args;
 
     // Use semantic search
@@ -61,7 +63,7 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
             content: [
                 {
                     type: 'text' as const,
-                    text: formatErrorResponse(errorResponse, format),
+                    text: formatErrorResponse(errorResponse, format, verbose_errors),
                 },
             ],
         };
@@ -72,7 +74,7 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
         query,
         language,
         detail_level,
-        metadata: detail_level === 'minimal' ? undefined : createMetadata('search_lrm', results.length, results.length),
+        metadata: (include_metadata && detail_level !== 'minimal') ? createMetadata('search_lrm', results.length, results.length) : undefined,
         results: results.map(r => {
             // Minimal: only section_number, title, page, similarity
             const result: any = {

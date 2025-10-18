@@ -13,7 +13,7 @@ import {
 } from '../utils/formatters.js';
 
 export async function handleGetTable(db: HDLDatabase, args: any) {
-    const { section_number, language, format = 'json' } = args;
+    const { section_number, language, format = 'json', include_metadata = true, verbose_errors = true } = args;
 
     const tables = await db.getTables(section_number, language);
 
@@ -48,7 +48,7 @@ export async function handleGetTable(db: HDLDatabase, args: any) {
             content: [
                 {
                     type: 'text' as const,
-                    text: formatErrorResponse(errorResponse, format),
+                    text: formatErrorResponse(errorResponse, format, verbose_errors),
                 },
             ],
         };
@@ -58,7 +58,7 @@ export async function handleGetTable(db: HDLDatabase, args: any) {
     const tableResponse: TableResponse = {
         section_number,
         language,
-        metadata: createMetadata('get_table', tables.length, tables.length),
+        metadata: include_metadata ? createMetadata('get_table', tables.length, tables.length) : undefined as any,
         tables: tables.map(t => ({
             caption: t.caption || undefined,
             markdown: t.markdown,

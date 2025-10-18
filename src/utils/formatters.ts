@@ -61,7 +61,7 @@ export interface SectionResult {
 }
 
 export interface SectionResponse {
-    metadata: ResponseMetadata;
+    metadata?: ResponseMetadata;
     section: SectionResult;
 }
 
@@ -76,7 +76,8 @@ export interface SectionListResponse {
     language: string;
     parent?: string;
     search_filter?: string;
-    metadata: ResponseMetadata;
+    detail_level?: string;
+    metadata?: ResponseMetadata;
     sections: SectionListItem[];
 }
 
@@ -93,7 +94,7 @@ export interface CodeResult {
 export interface CodeSearchResponse {
     query: string;
     language: string;
-    metadata: ResponseMetadata;
+    metadata?: ResponseMetadata;
     results: CodeResult[];
 }
 
@@ -106,7 +107,7 @@ export interface TableResult {
 export interface TableResponse {
     section_number: string;
     language: string;
-    metadata: ResponseMetadata;
+    metadata?: ResponseMetadata;
     tables: TableResult[];
 }
 
@@ -373,16 +374,25 @@ export function formatTableResponse(
 
 export function formatErrorResponse(
     response: ErrorResponse,
-    format: 'json' | 'markdown' = 'json'
+    format: 'json' | 'markdown' = 'json',
+    verboseErrors: boolean = true
 ): string {
     if (format === 'json') {
+        // If not verbose, omit suggestions to save tokens
+        if (!verboseErrors) {
+            const minimal = {
+                error: response.error,
+                message: response.message
+            };
+            return JSON.stringify(minimal, null, 2);
+        }
         return JSON.stringify(response, null, 2);
     }
 
     // Markdown format
     let md = response.message + '\n\n';
 
-    if (response.suggestions.length > 0) {
+    if (verboseErrors && response.suggestions.length > 0) {
         md += `Suggestions:\n`;
         for (const suggestion of response.suggestions) {
             md += `- ${suggestion.description}\n`;

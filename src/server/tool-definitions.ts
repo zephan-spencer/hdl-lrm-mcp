@@ -42,6 +42,16 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Response format: "json" for structured agent-native responses (default), or "markdown" for human-readable text',
                         default: 'json',
                     },
+                    include_metadata: {
+                        type: 'boolean',
+                        description: 'Include response metadata (timestamp, counts). Default: true. Set to false to save ~80 bytes.',
+                        default: true,
+                    },
+                    verbose_errors: {
+                        type: 'boolean',
+                        description: 'Include detailed error suggestions. Default: true. Set to false to save ~200 bytes per error.',
+                        default: true,
+                    },
                 },
                 required: ['query', 'language'],
             },
@@ -49,7 +59,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'get_section',
             description:
-                'Retrieve complete content of a specific section from the LRM. Always returns full section details including content, metadata, and navigation (parent/siblings/subsections). Use this after search_lrm to get complete information about sections you discovered.',
+                'Retrieve complete content of a specific section from the LRM. Returns full section details including content and metadata. Navigation (parent/siblings/subsections) is optional to save tokens. Use this after search_lrm to get complete information about sections you discovered.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -67,11 +77,26 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Include code examples from this section',
                         default: false,
                     },
+                    include_navigation: {
+                        type: 'boolean',
+                        description: 'Include navigation data (parent/siblings/subsections). Default: false to save tokens.',
+                        default: false,
+                    },
                     format: {
                         type: 'string',
                         enum: ['json', 'markdown'],
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
+                    },
+                    include_metadata: {
+                        type: 'boolean',
+                        description: 'Include response metadata (timestamp). Default: true. Set to false to save ~80 bytes.',
+                        default: true,
+                    },
+                    verbose_errors: {
+                        type: 'boolean',
+                        description: 'Include detailed error suggestions. Default: true. Set to false to save ~200 bytes per error.',
+                        default: true,
                     },
                 },
                 required: ['section_number', 'language'],
@@ -80,7 +105,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'list_sections',
             description:
-                'Get table of contents for a language. Returns hierarchical section list, optimized for browsing. Returns minimal data by default (section_number, title, depth, has_subsections).',
+                'Get table of contents for a language. Returns hierarchical section list, optimized for browsing. Use detail_level to control amount of data returned.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -102,11 +127,27 @@ export function getToolDefinitions(): Tool[] {
                         type: 'string',
                         description: 'Filter sections by keyword in title (e.g., "timing", "assignment"). Searches across all depths when used.',
                     },
+                    detail_level: {
+                        type: 'string',
+                        enum: ['minimal', 'full'],
+                        description: 'Response detail level: "minimal" returns only section_number and title (~50 bytes/result); "full" returns all fields including depth and has_subsections (~80 bytes/result). Default: "full".',
+                        default: 'full',
+                    },
                     format: {
                         type: 'string',
                         enum: ['json', 'markdown'],
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
+                    },
+                    include_metadata: {
+                        type: 'boolean',
+                        description: 'Include response metadata (timestamp, counts). Default: true. Set to false to save ~80 bytes.',
+                        default: true,
+                    },
+                    verbose_errors: {
+                        type: 'boolean',
+                        description: 'Include detailed error suggestions. Default: true. Set to false to save ~200 bytes per error.',
+                        default: true,
                     },
                 },
                 required: ['language'],
@@ -144,6 +185,16 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
                     },
+                    include_metadata: {
+                        type: 'boolean',
+                        description: 'Include response metadata (timestamp, counts). Default: true. Set to false to save ~80 bytes.',
+                        default: true,
+                    },
+                    verbose_errors: {
+                        type: 'boolean',
+                        description: 'Include detailed error suggestions. Default: true. Set to false to save ~200 bytes per error.',
+                        default: true,
+                    },
                 },
                 required: ['query', 'language'],
             },
@@ -169,6 +220,16 @@ export function getToolDefinitions(): Tool[] {
                         enum: ['json', 'markdown'],
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
+                    },
+                    include_metadata: {
+                        type: 'boolean',
+                        description: 'Include response metadata (timestamp, counts). Default: true. Set to false to save ~80 bytes.',
+                        default: true,
+                    },
+                    verbose_errors: {
+                        type: 'boolean',
+                        description: 'Include detailed error suggestions. Default: true. Set to false to save ~200 bytes per error.',
+                        default: true,
                     },
                 },
                 required: ['section_number', 'language'],

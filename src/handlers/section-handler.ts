@@ -15,7 +15,7 @@ import {
 } from '../utils/formatters.js';
 
 export async function handleGetSection(db: HDLDatabase, args: any) {
-    const { section_number, language, include_code = false, format = 'json' } = args;
+    const { section_number, language, include_code = false, include_navigation = false, format = 'json', include_metadata = true, verbose_errors = true } = args;
 
     const section = await db.getSection(section_number, language, include_code);
 
@@ -50,30 +50,35 @@ export async function handleGetSection(db: HDLDatabase, args: any) {
             content: [
                 {
                     type: 'text' as const,
-                    text: formatErrorResponse(errorResponse, format),
+                    text: formatErrorResponse(errorResponse, format, verbose_errors),
                 },
             ],
         };
     }
 
-    // Get parent section info if this section has a parent
+    // Get navigation data only if requested (saves tokens and DB queries)
     let parentSection = null;
-    if (section.parent_section) {
-        parentSection = await db.getSection(section.parent_section, language, false);
-    }
-
-    // Get sibling sections (sections with the same parent)
     let siblings: SectionInfo[] = [];
-    if (section.parent_section) {
-        siblings = await db.getSubsections(section.parent_section, language);
-    }
+    let subsections: SectionInfo[] = [];
 
-    // Get subsections
-    const subsections = await db.getSubsections(section_number, language);
+    if (include_navigation) {
+        // Get parent section info if this section has a parent
+        if (section.parent_section) {
+            parentSection = await db.getSection(section.parent_section, language, false);
+        }
+
+        // Get sibling sections (sections with the same parent)
+        if (section.parent_section) {
+            siblings = await db.getSubsections(section.parent_section, language);
+        }
+
+        // Get subsections
+        subsections = await db.getSubsections(section_number, language);
+    }
 
     // Build structured response
     const sectionResponse: SectionResponse = {
-        metadata: createMetadata('get_section'),
+        metadata: include_metadata ? createMetadata('get_section') : undefined as any,
         section: {
             section_number: section.section_number,
             title: section.title,
@@ -114,7 +119,7 @@ export async function handleGetSection(db: HDLDatabase, args: any) {
 }
 
 export async function handleListSections(db: HDLDatabase, args: any) {
-    const { language, parent = null, max_depth = 2, search_filter, format = 'json' } = args;
+    const { language, parent = null, max_depth = 2, search_filter, detail_level = 'full', format = 'json', include_metadata = true, verbose_errors = true } = args;
 
     const sections = await db.listSections(language, parent, max_depth, search_filter);
 
@@ -158,24 +163,34 @@ export async function handleListSections(db: HDLDatabase, args: any) {
             content: [
                 {
                     type: 'text' as const,
-                    text: formatErrorResponse(errorResponse, format),
+                    text: formatErrorResponse(errorResponse, format, verbose_errors),
                 },
             ],
         };
     }
 
-    // Build structured response
+    // Build structured response - filter fields based on detail_level
     const listResponse: SectionListResponse = {
         language,
         parent: parent || undefined,
         search_filter: search_filter || undefined,
-        metadata: createMetadata('list_sections', sections.length, sections.length),
-        sections: sections.map(s => ({
-            section_number: s.number,
-            title: s.title,
-            depth: s.depth,
-            has_subsections: s.has_subsections
-        }))
+        detail_level: detail_level,
+        metadata: include_metadata ? createMetadata('list_sections', sections.length, sections.length) : undefined as any,
+        sections: sections.map(s => {
+            // Minimal: only section_number and title
+            const result: any = {
+                section_number: s.number,
+                title: s.title
+            };
+
+            // Full: add depth and has_subsections
+            if (detail_level === 'full') {
+                result.depth = s.depth;
+                result.has_subsections = s.has_subsections;
+            }
+
+            return result;
+        })
     };
 
     return {
