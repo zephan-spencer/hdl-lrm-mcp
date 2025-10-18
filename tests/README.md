@@ -1,10 +1,11 @@
 # Athens HDL MCP - Test Suite
 
-Comprehensive test suite for the Athens HDL MCP server covering unit tests, integration tests, and performance benchmarks.
+Comprehensive test suite for the Athens HDL MCP server covering unit tests, integration tests, performance benchmarks, and token efficiency validation.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Token Efficiency Tests](#token-efficiency-tests) ⭐ **NEW**
 - [Setup](#setup)
 - [Running Tests](#running-tests)
 - [Test Coverage](#test-coverage)
@@ -21,14 +22,59 @@ The test suite consists of:
 1. **Unit Tests** - Test individual components in isolation
 2. **Integration Tests** - Test component interactions and workflows
 3. **Performance Tests** - Benchmark query performance and resource usage
-4. **Parser Tests** - Test PDF parsing and data extraction (Python)
+4. **Token Efficiency Tests** ⭐ - Validate token optimization features (NEW)
+5. **Parser Tests** - Test PDF parsing and data extraction (Python)
 
 ### Test Statistics
 
-- **Total Test Files**: 7
-- **Test Categories**: 4 (Unit, Integration, Performance, Edge Cases)
+- **Total Test Files**: 9
+- **Test Categories**: 5 (Unit, Integration, Performance, Token Efficiency, Edge Cases)
 - **Coverage Target**: 80%+
 - **Performance Target**: < 100ms query response time
+- **Token Savings Target**: 30-90% reduction with optimizations
+
+---
+
+## Token Efficiency Tests
+
+**Purpose**: Validate that recent token efficiency optimizations work correctly while maintaining LRM data integrity.
+
+### Quick Start
+
+```bash
+# Manual interactive test (recommended for validation)
+npx ts-node --esm tests/manual/token-efficiency-test.ts
+
+# Automated test suite (for CI/CD)
+npm test tests/unit/token-efficiency.test.ts
+```
+
+### What's Tested
+
+✅ **P0 #3**: search_code N+1 query elimination (50% performance improvement)
+✅ **P1 #4**: `include_navigation` parameter (30% token savings)
+✅ **P1 #5**: `detail_level` for list_sections (30% token savings)
+✅ **P2 #6**: `include_metadata` parameter (80-100 bytes per response)
+✅ **P2 #7**: `verbose_errors` parameter (200-300 bytes per error)
+
+### Expected Token Savings
+
+| Optimization | Savings |
+|-------------|---------|
+| search_lrm `detail_level: "minimal"` | 90% vs full content |
+| get_section `include_navigation: false` | ~30% per response |
+| list_sections `detail_level: "minimal"` | ~30% per response |
+| All tools `include_metadata: false` | ~80-100 bytes |
+| Errors `verbose_errors: false` | ~200-300 bytes |
+| **Discovery → Retrieval workflow** | **62% vs old approach** |
+
+### Full Documentation
+
+See [TOKEN-EFFICIENCY-TESTS.md](./TOKEN-EFFICIENCY-TESTS.md) for:
+- Complete test plan
+- Performance baselines
+- Data integrity checks
+- Reporting templates
 
 ---
 
@@ -167,21 +213,26 @@ Coverage reports are generated in:
 
 ```
 tests/
-├── unit/                    # Unit tests
-│   ├── database.test.ts     # Database layer tests
-│   └── tools.test.ts        # MCP tool handler tests
-├── integration/             # Integration tests
-│   ├── mcp-protocol.test.ts # MCP protocol compliance
-│   └── e2e.test.ts          # End-to-end workflows
-├── performance/             # Performance benchmarks
-│   └── benchmark.test.ts    # Query performance tests
-├── edge-cases/              # Edge case tests (future)
-├── fixtures/                # Test data and fixtures
-│   └── test-data.ts         # Shared test data
-└── setup.ts                 # Test utilities and setup
+├── unit/                         # Unit tests
+│   ├── database.test.ts          # Database layer tests
+│   ├── tools.test.ts             # MCP tool handler tests
+│   └── token-efficiency.test.ts  # Token optimization tests ⭐
+├── integration/                  # Integration tests
+│   ├── mcp-protocol.test.ts      # MCP protocol compliance
+│   └── e2e.test.ts               # End-to-end workflows
+├── performance/                  # Performance benchmarks
+│   └── benchmark.test.ts         # Query performance tests
+├── manual/                       # Manual test scripts ⭐
+│   └── token-efficiency-test.ts  # Interactive validation
+├── edge-cases/                   # Edge case tests (future)
+├── fixtures/                     # Test data and fixtures
+│   └── test-data.ts              # Shared test data
+├── setup.ts                      # Test utilities and setup
+├── README.md                     # This file
+└── TOKEN-EFFICIENCY-TESTS.md     # Token efficiency test plan ⭐
 
-src/parser/tests/            # Python parser tests
-└── test_parser.py           # Parser unit tests
+src/parser/tests/                 # Python parser tests
+└── test_parser.py                # Parser unit tests
 ```
 
 ---
