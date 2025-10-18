@@ -15,19 +15,126 @@ Athens HDL MCP is an intelligent documentation server that makes HDL language re
 - **5 MCP Tools** for querying Verilog, SystemVerilog, and VHDL documentation
 - **Semantic Search** using Qwen3-Embedding-0.6B (finds conceptually similar content)
 - **AI Summaries** using local Qwen3-0.6B model (reduces token usage)
-- **5,266 Sections** extracted with 100% page accuracy
-- **8,410 Code Examples** and 1,388 tables from official LRMs
+- **5,266 Sections** extracted with 100% page accuracy and embeddings
+- **3,795 Code Examples** and 569 tables from official LRMs
 - **Fast Full-Text Search** with SQLite FTS5
+- **Pre-built Database** available - ready to use in minutes
 
-### What You'll Get After Setup
+### What's Included
 
-| Language       | Sections | Code Examples | Tables |
-|----------------|----------|---------------|--------|
-| SystemVerilog  | 2,821    | ~5,000        | ~800   |
-| Verilog        | 1,198    | ~2,000        | ~300   |
-| VHDL           | 1,247    | ~1,400        | ~288   |
+| Language       | Sections | Code Examples | Tables | Embeddings |
+|----------------|----------|---------------|--------|------------|
+| SystemVerilog  | 2,821    | 2,335         | 249    | ✓          |
+| Verilog        | 1,198    | 820           | 215    | ✓          |
+| VHDL           | 1,247    | 640           | 105    | ✓          |
+| **Total**      | **5,266**| **3,795**     | **569**| **100%**   |
 
 ---
+
+## Quick Start (Recommended)
+
+**Get up and running in 5 minutes with the pre-built database!**
+
+### 1. Download Pre-built Database
+
+The database includes all parsed LRM content with pre-generated embeddings (139MB):
+
+```bash
+# Download from releases (replace with your actual release URL)
+wget https://github.com/your-org/athens-hdl-mcp/releases/download/v2.0.0/hdl-lrm.tar.gz -O data/hdl-lrm.tar.gz
+
+# Or if you already have the tarball, extract it:
+cd data
+tar -xzf hdl-lrm.tar.gz
+cd ..
+```
+
+**What's included:**
+- ✅ All 5,266 sections from Verilog, SystemVerilog, and VHDL LRMs
+- ✅ 3,795 code examples with accurate page numbers
+- ✅ 569 tables in markdown format
+- ✅ 100% embedding coverage for semantic search (Qwen3-Embedding-0.6B)
+- ✅ Ready for immediate use - no parsing or embedding generation needed
+
+### 2. Install Dependencies
+
+```bash
+# Clone repository
+git clone https://github.com/zephan-spencer/hdl-lrm-mcp.git
+cd hdl-lrm-mcp
+
+# Install Node.js dependencies
+npm install
+
+# Create Python virtual environment (for AI summaries)
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+```
+
+### 3. Build TypeScript
+
+```bash
+npm run build
+```
+
+### 4. Configure Your Claude Client
+
+#### Option A: Claude Desktop
+
+Add to your Claude Desktop config:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "hdl-lrm": {
+      "command": "node",
+      "args": ["/absolute/path/to/hdl-lrm-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**Important:** Use the absolute path to `dist/index.js`.
+
+Restart Claude Desktop and look for the 🔌 icon to see 5 HDL tools.
+
+#### Option B: Claude Code (CLI)
+
+Add to your Claude Code config:
+
+**macOS/Linux:** `~/.config/claude-code/config.json`
+**Windows:** `%APPDATA%\claude-code\config.json`
+
+```json
+{
+  "mcpServers": {
+    "hdl-lrm": {
+      "command": "node",
+      "args": ["/absolute/path/to/hdl-lrm-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**Important:** Use the absolute path to `dist/index.js`.
+
+Restart your terminal and run `claude-code` - the 5 HDL tools will be available automatically.
+
+**That's it!** 🚀
+
+---
+
+## Advanced: Build from Source
+
+**Only needed if you want to parse your own LRM PDFs or regenerate embeddings.**
+
+<details>
+<summary>Click to expand build-from-source instructions</summary>
 
 ## Installation
 
@@ -46,10 +153,13 @@ Athens HDL MCP is an intelligent documentation server that makes HDL language re
   - `LRM_SYSV_2017.pdf`
   - `LRM_VHDL_2008.pdf`
 
-### GPU Acceleration (Optional but Recommended)
+### GPU Acceleration (Optional - For Building from Source)
 
-**Dramatically speed up embedding generation and summarization with GPU support:**
+**Only needed if you're parsing PDFs and generating embeddings from scratch.**
 
+If using the pre-built database, GPU support is not required for normal operation. It's only beneficial if you want to regenerate embeddings or parse updated LRM PDFs.
+
+**Benefits:**
 - **AMD GPUs** (RX 9070 XT, RX 7000 series, etc.): Requires ROCm 6.4+
 - **NVIDIA GPUs**: Requires CUDA 11.8+
 - **Performance**: ~15x faster embedding generation (2-3 hours → 8-15 minutes)
@@ -160,34 +270,37 @@ python src/embeddings/generate_embeddings.py
 
 ---
 
-## MCP Setup
+</details>
 
-### Claude Desktop Configuration
+## Verifying Installation
 
-Add to your Claude Desktop config file:
+After setup (Quick Start or Build from Source):
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**Linux:** `~/.config/Claude/claude_desktop_config.json`
+### For Claude Desktop:
 
-```json
-{
-  "mcpServers": {
-    "hdl-lrm": {
-      "command": "node",
-      "args": ["/absolute/path/to/hdl-lrm-mcp/dist/index.js"]
-    }
-  }
-}
+1. **Restart Claude Desktop**
+2. **Look for the 🔌 icon** in Claude's interface
+3. **Click it** to see available tools - you should see 5 HDL tools:
+   - `search_lrm` - Semantic search
+   - `get_section` - Retrieve specific sections
+   - `list_sections` - Browse table of contents
+   - `search_code` - Find code examples
+   - `get_table` - Retrieve tables
+
+### For Claude Code (CLI):
+
+1. **Restart your terminal**
+2. **Run `claude-code`** to start a new session
+3. The 5 HDL tools are automatically available - no need to check manually
+
+### Test Your Setup
+
+Try asking Claude (in either Desktop or CLI):
 ```
-
-**Important:** Use the absolute path to `dist/index.js`.
-
-### Verifying Installation
-
-1. Restart Claude Desktop
-2. Look for the 🔌 icon in Claude's interface
-3. Click it to see available tools - you should see 5 HDL tools
+"Search for blocking vs non-blocking assignments in Verilog"
+"Show me SystemVerilog assertion examples"
+"What does VHDL say about signal resolution?"
+```
 
 ---
 
@@ -308,8 +421,8 @@ hdl-lrm-mcp/
 ├── scripts/
 │   └── setup_pytorch.sh      # Automated GPU setup
 ├── data/
-│   ├── hdl-lrm.db           # SQLite database (79MB)
-│   └── lrms/                # Source PDFs
+│   ├── hdl-lrm.db           # SQLite database (139MB with embeddings)
+│   └── lrms/                # Source PDFs (only needed for parsing)
 ├── tests/
 │   ├── gpu_test.py          # GPU verification tests
 │   └── ...                  # TypeScript tests
@@ -406,10 +519,18 @@ npm run build
 
 ### MCP server not appearing in Claude
 
-1. Check config path is absolute
-2. Restart Claude Desktop
+**Claude Desktop:**
+1. Check config path is absolute in `claude_desktop_config.json`
+2. Restart Claude Desktop completely
 3. Check Claude logs: `Help` → `Show Logs`
 4. Verify build: `node dist/index.js` (should print "Server running")
+
+**Claude Code (CLI):**
+1. Check config path is absolute in `~/.config/claude-code/config.json`
+2. Restart your terminal session
+3. Run `claude-code --version` to verify installation
+4. Check MCP logs in `~/.config/claude-code/logs/` if available
+5. Verify build: `node dist/index.js` (should print "Server running")
 
 ### GPU not detected
 

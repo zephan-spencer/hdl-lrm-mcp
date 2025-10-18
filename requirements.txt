@@ -7,6 +7,9 @@ pypdf>=3.0.0  # For PDF manipulation (test snippets)
 # For semantic search with embeddings
 sentence-transformers>=2.2.0
 
+# For embedding server (persistent model loading)
+flask>=3.0.0
+
 # For AI summarization using local LLM
 transformers>=4.35.0
 torch>=2.0.0

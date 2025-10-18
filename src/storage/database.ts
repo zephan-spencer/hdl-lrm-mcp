@@ -6,7 +6,7 @@
 
 import sqlite3 from 'sqlite3';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -93,30 +93,43 @@ export interface CodeSearchResultWithExplanation extends CodeSearchResult {
 export class HDLDatabase {
     private db: sqlite3.Database | null = null;
     private dbPath: string;
+    private embeddingServer: ChildProcess | null = null;
+    private embeddingServerPort: number = 8765;
+    private embeddingServerReady: boolean = false;
 
     constructor(dbPath: string) {
         this.dbPath = dbPath;
     }
 
     /**
-     * Connect to the database
+     * Connect to the database and start the embedding server
+     * Fails if embedding server cannot be started
      */
     async connect(): Promise<void> {
         return new Promise((resolve, reject) => {
-            this.db = new sqlite3.Database(this.dbPath, (error) => {
+            this.db = new sqlite3.Database(this.dbPath, async (error) => {
                 if (error) {
                     reject(new Error(`Failed to connect to database: ${error.message}`));
                 } else {
-                    resolve();
+                    // Start embedding server for fast semantic search (fail-fast if unavailable)
+                    try {
+                        await this.startEmbeddingServer();
+                        resolve();
+                    } catch (err) {
+                        reject(new Error(`Failed to start embedding server: ${err}`));
+                    }
                 }
             });
         });
     }
 
     /**
-     * Close the database connection
+     * Close the database connection and stop the embedding server
      */
     async close(): Promise<void> {
+        // Stop embedding server first
+        await this.stopEmbeddingServer();
+
         if (!this.db) return;
 
         return new Promise((resolve, reject) => {
@@ -441,6 +454,80 @@ export class HDLDatabase {
     }
 
     // =============================================================================
+    // Embedding Server Lifecycle
+    // =============================================================================
+
+    /**
+     * Start the embedding server for fast semantic search
+     * Keeps the embedding model loaded in memory to avoid repeated loading overhead
+     */
+    private async startEmbeddingServer(): Promise<void> {
+        const pythonPath = this.getPythonPath();
+        const serverPath = join(__dirname, '..', '..', 'src', 'embeddings', 'embedding_server.py');
+
+        console.log('[EmbeddingServer] Starting embedding server on port', this.embeddingServerPort);
+
+        this.embeddingServer = spawn(pythonPath, [
+            serverPath,
+            '--port', this.embeddingServerPort.toString(),
+            '--host', '127.0.0.1',
+            '--model', 'Qwen/Qwen3-Embedding-0.6B'
+        ]);
+
+        // Handle server output
+        this.embeddingServer.stdout?.on('data', (data) => {
+            const output = data.toString();
+            console.log('[EmbeddingServer]', output.trim());
+
+            // Check if server is ready
+            if (output.includes('Running on')) {
+                this.embeddingServerReady = true;
+            }
+        });
+
+        this.embeddingServer.stderr?.on('data', (data) => {
+            const output = data.toString();
+            console.error('[EmbeddingServer]', output.trim());
+
+            // Flask logs to stderr by default, so also check there for ready signal
+            if (output.includes('Running on') || output.includes('Server ready')) {
+                this.embeddingServerReady = true;
+            }
+        });
+
+        this.embeddingServer.on('close', (code) => {
+            console.log('[EmbeddingServer] Server exited with code', code);
+            this.embeddingServerReady = false;
+        });
+
+        // Wait for server to be ready (with timeout)
+        const maxWait = 120000; // 120 seconds for model loading (can be slow on CPU)
+        const startTime = Date.now();
+
+        while (!this.embeddingServerReady && Date.now() - startTime < maxWait) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        if (!this.embeddingServerReady) {
+            throw new Error('Embedding server failed to start within timeout');
+        }
+
+        console.log('[EmbeddingServer] Server ready!');
+    }
+
+    /**
+     * Stop the embedding server
+     */
+    private async stopEmbeddingServer(): Promise<void> {
+        if (this.embeddingServer) {
+            console.log('[EmbeddingServer] Stopping server...');
+            this.embeddingServer.kill();
+            this.embeddingServer = null;
+            this.embeddingServerReady = false;
+        }
+    }
+
+    // =============================================================================
     // Private Helper Methods
     // =============================================================================
 
@@ -450,29 +537,53 @@ export class HDLDatabase {
         }
     }
 
+    /**
+     * Get the path to the virtual environment's Python interpreter
+     * Handles platform differences (Windows vs Unix-like systems)
+     */
+    private getPythonPath(): string {
+        // From dist/storage/, go up two levels to project root, then into .venv
+        const isWindows = process.platform === 'win32';
+        const pythonBin = isWindows ? 'Scripts/python.exe' : 'bin/python';
+        return join(__dirname, '..', '..', '.venv', pythonBin);
+    }
+
     private async encodeQueryText(
         query: string,
         model: string = 'Qwen/Qwen3-Embedding-0.6B'
     ): Promise<number[]> {
-        const execPromise = promisify(exec);
-        // From dist/storage/, go up two levels and into src/embeddings/
-        const scriptPath = join(__dirname, '..', '..', 'src', 'embeddings', 'encode_query.py');
-
-        try {
-            const { stdout } = await execPromise(
-                `python "${scriptPath}" "${query.replace(/"/g, '\\"')}" --model ${model}`
+        // Fail fast if embedding server is not ready
+        if (!this.embeddingServerReady) {
+            throw new Error(
+                'Embedding server is not running. Semantic search requires the embedding server to be started. ' +
+                'Ensure the server started successfully during connect().'
             );
-
-            const result = JSON.parse(stdout);
-
-            if (result.error) {
-                throw new Error(result.error);
-            }
-
-            return result.embedding;
-        } catch (error) {
-            throw new Error(`Failed to encode query: ${error}`);
         }
+
+        // Call embedding server via HTTP (no fallback - fail fast)
+        const response = await fetch(`http://127.0.0.1:${this.embeddingServerPort}/encode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Embedding server returned error: HTTP ${response.status}`);
+        }
+
+        const result = await response.json() as { error?: string; embedding?: number[] };
+
+        if (result.error) {
+            throw new Error(`Embedding server error: ${result.error}`);
+        }
+
+        if (!result.embedding) {
+            throw new Error('Embedding server returned invalid response: missing embedding');
+        }
+
+        return result.embedding;
     }
 
     /**
@@ -489,9 +600,10 @@ export class HDLDatabase {
     ): Promise<any> {
         const execPromise = promisify(exec);
         const scriptPath = join(__dirname, '..', '..', 'src', 'summarization', 'summarize.py');
+        const pythonPath = this.getPythonPath();
 
         // Build command
-        let command = `python "${scriptPath}" "${text.replace(/"/g, '\\"')}" --mode ${mode}`;
+        let command = `"${pythonPath}" "${scriptPath}" "${text.replace(/"/g, '\\"')}" --mode ${mode}`;
 
         if (options?.language) {
             command += ` --language ${options.language}`;

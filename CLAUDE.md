@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents with efficient access to HDL Language Reference Manuals (Verilog, SystemVerilog, VHDL). It combines PDF parsing, semantic search, and AI summarization to make hardware description language documentation easily queryable.
 
+### Pre-built Database Available
+
+A fully processed database (139MB) is available with all sections, code examples, tables, and embeddings pre-generated. Users can download and extract it to `data/hdl-lrm.db` to skip the parsing and embedding generation steps entirely. This is the recommended path for most users.
+
+**Database Contents:**
+- 5,266 sections (SystemVerilog: 2,821 | Verilog: 1,198 | VHDL: 1,247)
+- 3,795 code examples
+- 569 tables
+- 100% embedding coverage (Qwen3-Embedding-0.6B)
+
 ## Architecture
 
 ### Two-Language Stack
@@ -63,6 +73,15 @@ Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents 
 
 ## Development Commands
 
+### Quick Start (Recommended)
+```bash
+# If you have the pre-built database tarball
+cd data && tar -xzf hdl-lrm.tar.gz && cd ..
+npm install
+npm run build
+npm start                  # MCP server ready!
+```
+
 ### Building and Running
 ```bash
 npm run build              # Compile TypeScript to dist/
@@ -82,7 +101,10 @@ npm run test:gpu:quick     # Quick GPU detection test
 npm run init-db            # Create fresh database with schema
 ```
 
-### Parsing LRMs
+### Parsing LRMs (Advanced - Only if Building from Source)
+
+**Note:** Skip this if you're using the pre-built database. Only needed for custom LRM PDFs or regenerating the database.
+
 ```bash
 # Parse individual languages (runs Python parser)
 npm run parse:verilog
@@ -93,7 +115,10 @@ npm run parse:vhdl
 python src/parser/parse_lrm.py --pdf data/lrms/LRM_V_2005.pdf --language verilog --output data/hdl-lrm.db
 ```
 
-### Generating Embeddings
+### Generating Embeddings (Advanced - Only if Building from Source)
+
+**Note:** Skip this if you're using the pre-built database. The pre-built database includes all embeddings.
+
 ```bash
 # After parsing, generate embeddings for semantic search
 # GPU auto-detected (15x faster if available)
