@@ -6,18 +6,50 @@
 [![Node.js](https://img.shields.io/badge/node-%3E=18.0.0-brightgreen)](package.json)
 [![Python](https://img.shields.io/badge/python-3.9+-blue)](requirements.txt)
 
+---
+
+## 🤖 Quick Start for AI Agents
+
+**Efficient HDL documentation queries in 2 steps:**
+
+```javascript
+// 1. DISCOVERY - Find relevant sections (minimal tokens)
+search_lrm({
+  query: "your query here",
+  language: "verilog",  // or systemverilog, vhdl
+  detail_level: "minimal"  // Returns only: section_number, title, page, similarity
+});
+
+// 2. RETRIEVAL - Get full content for selected sections
+get_section({
+  section_number: "9.2.1",
+  language: "verilog",
+  include_code: true
+});
+```
+
+**Token Efficiency:** Discovery mode uses 90% fewer tokens than full-content search.
+
+**Available Languages:** `verilog` | `systemverilog` | `vhdl`
+
+**Detail Levels:** `minimal` (default) | `preview` | `full`
+
+[→ Full Agent Documentation](#usage-for-ai-agents)
+
+---
+
 ## Overview
 
-Athens HDL MCP is an intelligent documentation server that makes HDL language reference manuals queryable through natural language. It combines PDF parsing, semantic search with AI embeddings, and local LLM summarization to help AI agents and developers quickly find relevant HDL syntax, semantics, and code examples.
+Athens HDL MCP is a token-optimized documentation server that makes HDL language reference manuals queryable through semantic search. It combines PDF parsing and AI embeddings to help agents efficiently discover and retrieve HDL syntax, semantics, and code examples.
 
 ### Key Features
 
-- **5 MCP Tools** for querying Verilog, SystemVerilog, and VHDL documentation
+- **5 MCP Tools** optimized for agentic workflows (discovery → retrieval pattern)
 - **Semantic Search** using Qwen3-Embedding-0.6B (finds conceptually similar content)
-- **AI Summaries** using local Qwen3-0.6B model (reduces token usage)
+- **Token-Efficient Responses** with 3 detail levels (minimal/preview/full)
 - **5,266 Sections** extracted with 100% page accuracy and embeddings
 - **3,795 Code Examples** and 569 tables from official LRMs
-- **Fast Full-Text Search** with SQLite FTS5
+- **Persistent Embedding Server** for fast queries (~100x faster than reload per query)
 - **Pre-built Database** available - ready to use in minutes
 
 ### What's Included
@@ -304,84 +336,156 @@ Try asking Claude (in either Desktop or CLI):
 
 ---
 
-## Usage
+## Usage for AI Agents
+
+### Agent-Optimized Workflow: Discovery → Retrieval
+
+Athens HDL MCP is designed for **token efficiency**. The recommended workflow:
+
+**Step 1: Discovery** (Minimal tokens)
+```javascript
+// Find relevant sections with minimal token cost
+search_lrm({
+  query: "blocking vs non-blocking assignments",
+  language: "verilog",
+  detail_level: "minimal",  // DEFAULT - only section_number, title, page, similarity
+  max_results: 10  // Cast wide net at low cost (~800 bytes total)
+});
+```
+
+**Step 2: Retrieval** (Full details for selected sections)
+```javascript
+// Get complete content for the most relevant section
+get_section({
+  section_number: "9.2.2",
+  language: "verilog",
+  include_code: true
+});
+```
 
 ### Available Tools
 
-#### 1. **search_lrm** - Semantic Search
+#### 1. **search_lrm** - Semantic Search (Discovery)
 
-Find sections by concept, even without exact keywords.
+Find sections by concept using AI embeddings.
 
-```typescript
-// Example prompts to Claude:
-"Search for blocking vs non-blocking assignments in Verilog"
-"Find information about SystemVerilog assertions"
-"What does VHDL say about signal resolution?"
+**Recommended Parameters:**
+```javascript
+{
+  query: "blocking vs non-blocking assignments",
+  language: "verilog",  // verilog | systemverilog | vhdl
+  detail_level: "minimal",  // minimal (default) | preview | full
+  max_results: 10  // 1-20, use higher with minimal mode
+}
 ```
 
+**Detail Levels:**
+- `minimal` (default): Returns section_number, title, page, similarity only (~80 bytes/result)
+- `preview`: Adds 200-char content preview (~280 bytes/result)
+- `full`: Returns complete content (~1000-3000 bytes/result)
+
+**Token Efficiency:**
+- Minimal mode: **90% token reduction** vs full content
+- Discovery workflow: **54% reduction** vs old approach
+
+#### 2. **get_section** - Retrieve Full Content
+
+Get complete section with metadata and navigation.
+
 **Parameters:**
-- `query` (string): Search query or concept
-- `language` (string): `verilog` | `systemverilog` | `vhdl`
-- `max_results` (number): Maximum results (default: 5, max: 20)
-- `include_summary` (boolean): Include AI summaries (default: true)
-
-#### 2. **get_section** - Retrieve Section Content
-
-Get complete content from a specific section.
-
-```typescript
-// Example:
-"Get Verilog section 9.2.1 about procedural assignments"
+```javascript
+{
+  section_number: "9.2.1",  // e.g., "3.2.1"
+  language: "verilog",
+  include_code: true  // Include code examples (default: false)
+}
 ```
 
-**Parameters:**
-- `section_number` (string): e.g., "9.2.1"
-- `language` (string): `verilog` | `systemverilog` | `vhdl`
-- `include_code` (boolean): Include code examples (default: false)
+**Returns:** Full section content, parent/sibling/subsection navigation, optional code examples
 
 #### 3. **list_sections** - Table of Contents
 
-Browse the hierarchical structure of the LRM.
-
-```typescript
-// Example:
-"Show me the table of contents for SystemVerilog"
-"List subsections under Verilog section 9"
-```
+Browse hierarchical structure.
 
 **Parameters:**
-- `language` (string): `verilog` | `systemverilog` | `vhdl`
-- `parent` (string, optional): Parent section to filter by
-- `max_depth` (number): Maximum depth (default: 2)
+```javascript
+{
+  language: "verilog",
+  parent: "9",  // Optional: filter to subsections
+  max_depth: 2,  // Hierarchy depth (default: 2)
+  search_filter: "assignment"  // Optional: filter by keyword
+}
+```
 
 #### 4. **search_code** - Find Code Examples
 
-Search for specific code patterns or keywords.
-
-```typescript
-// Example:
-"Find Verilog code examples for always blocks"
-"Show SystemVerilog class examples"
-```
+Search for code patterns or keywords.
 
 **Parameters:**
-- `query` (string): Code pattern or keyword
-- `language` (string): `verilog` | `systemverilog` | `vhdl`
-- `max_results` (number): Maximum results (default: 10)
-- `explain` (boolean): Add AI explanations (default: false)
+```javascript
+{
+  query: "always @",
+  language: "verilog",
+  max_results: 10,
+  include_context: false  // DEFAULT - omit 200-char preview to save tokens
+}
+```
+
+**Token Optimization:** Context is opt-in to save ~200 bytes per result.
 
 #### 5. **get_table** - Retrieve Tables
 
 Get tables from a specific section.
 
-```typescript
-// Example:
-"Get tables from Verilog section 3.1"
+**Parameters:**
+```javascript
+{
+  section_number: "3.1",
+  language: "verilog"
+}
 ```
 
-**Parameters:**
-- `section_number` (string): e.g., "3.1"
-- `language` (string): `verilog` | `systemverilog` | `vhdl`
+### Example Usage
+
+```javascript
+// EFFICIENT: Discovery → Retrieval workflow
+// 1. Find relevant sections (minimal)
+const discovery = await search_lrm({
+  query: "clock domain crossing",
+  language: "systemverilog",
+  detail_level: "minimal",
+  max_results: 15
+});
+
+// 2. Retrieve top 2 matches fully
+const section1 = await get_section({
+  section_number: discovery.results[0].section_number,
+  language: "systemverilog",
+  include_code: true
+});
+
+const section2 = await get_section({
+  section_number: discovery.results[1].section_number,
+  language: "systemverilog"
+});
+
+// Total tokens: ~1200 bytes (vs ~18KB with old full-content search)
+```
+
+### Response Format
+
+**JSON (default)** - Structured, parseable responses
+```json
+{
+  "query": "...",
+  "language": "verilog",
+  "results": [...]
+}
+```
+
+**Markdown** - Human-readable (use `format: "markdown"` parameter)
+- Available for debugging
+- Optimized formatting (no emojis)
 
 ---
 
@@ -409,10 +513,8 @@ hdl-lrm-mcp/
 │   │   └── gpu_utils.py      # GPU detection and optimization
 │   ├── embeddings/           # Semantic search (GPU accelerated)
 │   │   ├── generate_embeddings.py
+│   │   ├── embedding_server.py  # Persistent embedding server
 │   │   └── encode_query.py
-│   ├── summarization/        # AI summaries (GPU accelerated)
-│   │   ├── summarizer.py
-│   │   └── summarize.py
 │   └── parser/               # PDF parsing
 │       ├── parse_lrm.py      # Main parser
 │       ├── docling_utils.py
@@ -469,23 +571,23 @@ python src/parser/parse_lrm.py \
 ### Two-Language Design
 
 - **TypeScript** (Node.js): MCP server, database access, tool routing
-- **Python**: PDF parsing (Docling), embeddings (sentence-transformers), AI (transformers)
-- **Communication**: TypeScript spawns Python subprocesses for ML tasks
+- **Python**: PDF parsing (Docling), embeddings (sentence-transformers)
+- **Communication**: TypeScript → Persistent Python embedding server (HTTP)
 
 ### Search Pipeline
 
-1. **User Query** → `search_lrm` tool
-2. **Encode Query** → Python generates embedding vector
-3. **Similarity Search** → Cosine similarity against section embeddings
-4. **Summarize** → Optional AI summary generation
-5. **Format Response** → Markdown with sections, summaries, key points
+1. **User Query** → `search_lrm` tool with `detail_level` parameter
+2. **Encode Query** → Python embedding server (pre-loaded model, fast)
+3. **Similarity Search** → TypeScript computes cosine similarity
+4. **Filter by Detail Level** → Return minimal/preview/full based on parameter
+5. **Format Response** → JSON or markdown
 
 ### Database Schema
 
 - **sections**: Hierarchical LRM sections with full content
 - **code_examples**: Extracted code snippets
 - **tables**: Extracted tables (JSON + markdown)
-- **section_embeddings**: 768-dim embedding vectors
+- **section_embeddings**: 1024-dim embedding vectors (Qwen3-Embedding-0.6B)
 - **sections_fts**: FTS5 virtual table for keyword search
 - **parse_metadata**: Parsing history and stats
 
@@ -571,26 +673,26 @@ return torch.float32  # Force float32 instead of bfloat16
 
 ## Performance
 
-### MCP Tool Response Times (CPU)
+### MCP Tool Response Times
 
-| Operation | Target | Typical |
-|-----------|--------|---------|
-| Keyword search (FTS5) | < 50ms | 20-30ms |
-| Semantic search | < 2s | 1-3s* |
-| Section retrieval | < 50ms | 10-20ms |
-| Code search | < 100ms | 40-60ms |
+| Operation | First Query | Subsequent | Notes |
+|-----------|-------------|------------|-------|
+| Semantic search | 2-3s | 200-500ms | First query starts embedding server |
+| Section retrieval | < 50ms | < 50ms | Direct SQLite lookup |
+| Code search | < 100ms | < 100ms | FTS5 full-text search |
+| List sections | < 50ms | < 50ms | Database query only |
 
-\* *Includes Python subprocess startup and model inference*
+**Persistent Embedding Server:** After the first query, the embedding model stays loaded in memory for ~100x faster subsequent queries.
 
-### GPU Acceleration Impact
+### GPU Acceleration Impact (Build from Source Only)
 
 | Task | CPU Time | GPU Time (RX 9070 XT) | Speedup |
 |------|----------|----------------------|---------|
 | Generate all embeddings | 2-3 hours | 8-15 minutes | ~15x |
-| Single query encoding | 1-3s | 50-200ms | ~10x |
-| Section summarization | 5-10s | 0.5-1s | ~8x |
+| Embedding server startup | 80-120s | 8-15s | ~10x |
+| Query encoding (after startup) | 1-3s | 50-200ms | ~10x |
 
-GPU support auto-detected. Use `--device cpu` to force CPU mode if needed.
+**Note:** GPU is only beneficial when building from source (parsing PDFs, generating embeddings). The pre-built database works great on CPU.
 
 ---
 

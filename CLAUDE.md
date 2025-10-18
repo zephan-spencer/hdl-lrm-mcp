@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents with efficient access to HDL Language Reference Manuals (Verilog, SystemVerilog, VHDL). It combines PDF parsing, semantic search, and AI summarization to make hardware description language documentation easily queryable.
+Athens HDL MCP is a Model Context Protocol (MCP) server that provides AI agents with efficient access to HDL Language Reference Manuals (Verilog, SystemVerilog, VHDL). It combines PDF parsing and semantic search to make hardware description language documentation easily queryable with token-optimized responses.
 
 ### Pre-built Database Available
 
@@ -20,8 +20,8 @@ A fully processed database (139MB) is available with all sections, code examples
 
 ### Two-Language Stack
 - **TypeScript (Node.js)**: MCP server implementation, database access layer, tool handlers
-- **Python**: PDF parsing (Docling), semantic search embeddings (sentence-transformers), AI summarization (transformers)
-- **Communication**: TypeScript calls Python scripts via child_process for heavy lifting
+- **Python**: PDF parsing (Docling), semantic search embeddings (sentence-transformers)
+- **Communication**: TypeScript calls Python via persistent embedding server for fast queries
 
 ### Core Components
 
@@ -34,7 +34,7 @@ A fully processed database (139MB) is available with all sections, code examples
 **Database Layer (`src/storage/database.ts`)**
 - Typed interface for SQLite operations
 - Handles FTS5 full-text search and semantic search with embeddings
-- Calls Python scripts for embedding generation and summarization
+- Manages persistent Python embedding server for fast queries
 - Uses cosine similarity for semantic search ranking
 
 **PDF Parser (`src/parser/parse_lrm.py`)**
@@ -43,18 +43,13 @@ A fully processed database (139MB) is available with all sections, code examples
 - Stores structured data in SQLite with hierarchical section relationships
 - Critical: Uses `item.prov[0].page_no` for 100% page accuracy
 
-**Embeddings (`src/embeddings/generate_embeddings.py`)**
+**Embeddings (`src/embeddings/generate_embeddings.py` & `embedding_server.py`)**
 - Generates semantic embeddings using Qwen/Qwen3-Embedding-0.6B model
 - **GPU Accelerated**: Auto-detects GPU and uses bfloat16 precision (~15x speedup)
 - **Automatic chunking**: Large sections (>6000 chars) split with 10% overlap, embeddings averaged
+- **Persistent server**: Keeps embedding model loaded in memory for fast queries (~100x faster than reload per query)
 - Batch processing: 32 sections/batch (default for memory safety)
 - Supports incremental updates (only processes sections without embeddings)
-
-**Summarization (`src/summarization/summarizer.py`)**
-- On-demand AI summarization using local LLM (Qwen3)
-- **GPU Accelerated**: Auto-detects GPU for ~8x faster generation
-- Three modes: summary, keypoints, explain
-- Called from TypeScript via CLI interface (`summarize.py`)
 
 **GPU Utilities (`src/utils/gpu_utils.py`)**
 - Auto-detects AMD (ROCm) or NVIDIA (CUDA) GPUs
@@ -149,6 +144,129 @@ npm run test:python        # Run Python parser tests
 pytest src/parser/tests/   # Direct pytest
 ```
 
+## Agent-Optimized Workflow
+
+### Overview
+
+Athens HDL MCP is designed for token efficiency in agentic systems. The API defaults to **minimal responses** for discovery, with explicit opt-in for detailed content.
+
+### Recommended Workflow: Discovery → Retrieval
+
+**Step 1: Discovery** (Minimal tokens)
+```javascript
+// Find relevant sections with minimal token cost
+const discovery = await search_lrm({
+  query: "blocking vs non-blocking assignments",
+  language: "verilog",
+  detail_level: "minimal",  // DEFAULT - returns only: section_number, title, page, similarity
+  max_results: 10  // With minimal mode, cast a wide net at low cost
+});
+
+/* Response (~80 bytes per result = 800 bytes total):
+{
+  "query": "blocking vs non-blocking assignments",
+  "language": "verilog",
+  "results": [
+    {"section_number": "9.2.2", "title": "The nonblocking procedural assignment", "page": 148, "similarity": 0.709},
+    {"section_number": "9.2.1", "title": "Blocking procedural assignments", "page": 147, "similarity": 0.685},
+    ... // 8 more minimal results
+  ]
+}
+*/
+```
+
+**Step 2: Retrieval** (Full details for selected sections)
+```javascript
+// Get complete content for the most relevant section
+const section = await get_section({
+  section_number: "9.2.2",
+  language: "verilog",
+  include_code: true  // Include code examples
+});
+
+/* Returns full section with content, metadata, navigation (~2500 bytes):
+{
+  "metadata": {...},
+  "section": {
+    "section_number": "9.2.2",
+    "title": "...",
+    "content": "... full section text ...",
+    "code_examples": [...],
+    "subsections": [...],
+    ...
+  }
+}
+*/
+```
+
+### Detail Levels for search_lrm
+
+**`detail_level: "minimal"` (DEFAULT)** - Discovery Phase
+- Returns: `section_number`, `title`, `page`, `similarity` only
+- Size: ~80 bytes per result
+- Use case: "Which sections are relevant to my query?"
+- **Token savings: 90%** vs full content
+
+**`detail_level: "preview"`** - Evaluation Phase
+- Returns: minimal fields + first 200 chars of content
+- Size: ~280 bytes per result
+- Use case: "Which section has exactly what I need?"
+
+**`detail_level: "full"`** - Immediate Retrieval
+- Returns: Complete content + all metadata
+- Size: ~1000-3000 bytes per result
+- Use case: "I need all details right now" (rare - usually get_section is better)
+
+### Code Search Optimization
+
+```javascript
+// Efficient code search (no context by default)
+const code = await search_code({
+  query: "always @",
+  language: "verilog",
+  max_results: 10,
+  include_context: false  // DEFAULT - omits 200-char section preview to save tokens
+});
+
+// Opt-in to context if needed
+const codeWithContext = await search_code({
+  query: "always @",
+  language: "verilog",
+  include_context: true  // Adds 200-char section context
+});
+```
+
+### Token Efficiency Examples
+
+**Old workflow** (pre-optimization):
+- Search 5 sections with full content: ~12,500 bytes
+- Total: ~12,500 bytes
+
+**New workflow** (minimal → retrieval):
+- Discovery 10 sections minimal: 800 bytes
+- Retrieve 2 sections full: 5,000 bytes
+- **Total: ~5,800 bytes (54% reduction)**
+
+**Best case** (discovery only):
+- Discovery 10 sections minimal: 800 bytes
+- **Total: ~800 bytes (93% reduction vs old workflow)**
+
+### Response Format
+
+**JSON (default)** - Structured, parseable, agent-native
+```javascript
+{
+  "query": "...",
+  "language": "verilog",
+  "results": [...]
+}
+```
+
+**Markdown** - Human-readable debugging
+- Available for all tools via `format: "markdown"`
+- Optimized formatting (no emojis, minimal decorations)
+- Use for manual inspection, not agent consumption
+
 ## Key Implementation Details
 
 ### Python Script Invocation Pattern
@@ -161,12 +279,12 @@ const result = JSON.parse(stdout);
 ```
 
 ### Semantic Search Flow
-1. User query → `search_lrm` tool
-2. TypeScript encodes query via `encode_query.py`
-3. Retrieve all section embeddings from database
-4. Compute cosine similarity in TypeScript
-5. Optionally call summarizer for results
-6. Return ranked results with AI summaries
+1. User query → `search_lrm` tool (with detail_level parameter)
+2. TypeScript sends query to persistent Python embedding server via HTTP
+3. Embedding server encodes query using pre-loaded model (fast - no reload)
+4. TypeScript retrieves all section embeddings from database
+5. Compute cosine similarity in TypeScript
+6. Return ranked results filtered by detail_level (minimal/preview/full)
 
 ### Section Hierarchy
 Sections use dotted notation (e.g., "3.2.1"):
@@ -177,10 +295,10 @@ Sections use dotted notation (e.g., "3.2.1"):
 ### Model Defaults
 - **Embeddings**: `Qwen/Qwen3-Embedding-0.6B` (8192 token context, ~6000 chars recommended)
 - **Chunking**: Sections >6000 chars auto-chunked with 10% overlap, embeddings averaged
-- **Summarization**: Local Qwen3 model loaded via transformers
-- **Embedding dimension**: Check with model.get_sentence_embedding_dimension()
+- **Embedding dimension**: 1024 (Qwen3-Embedding-0.6B)
 - **Precision**: bfloat16 on GPU (RDNA 3+/Ampere+), float32 on CPU
 - **Batch size**: 32 (default for both CPU and GPU, for memory safety)
+- **Response defaults**: `detail_level="minimal"`, `format="json"`, `include_context=false`
 
 ## Important File Locations
 
@@ -224,7 +342,7 @@ Sections use dotted notation (e.g., "3.2.1"):
 **Python (CPU)**
 - `docling>=2.54.0`: PDF parsing
 - `sentence-transformers>=2.2.0`: Embedding generation
-- `transformers>=4.35.0`: LLM summarization
+- `flask>=2.0.0`: Embedding server
 - `torch>=2.0.0`: ML framework (CPU version from requirements.txt)
 
 **Python (GPU - Optional)**
