@@ -27,7 +27,8 @@ export interface SearchResult {
 export interface SearchResponse {
     query: string;
     language: string;
-    metadata: ResponseMetadata;
+    detail_level?: string;
+    metadata?: ResponseMetadata;  // Optional - omitted for minimal responses
     results: SearchResult[];
 }
 
@@ -127,23 +128,6 @@ export interface ErrorResponse {
 // Utility Functions
 // =============================================================================
 
-/**
- * Filter object to only include specified fields
- */
-export function filterFields<T extends Record<string, any>>(
-    obj: T,
-    fields?: string[]
-): Partial<T> {
-    if (!fields || fields.length === 0) return obj;
-
-    const filtered: any = {};
-    for (const field of fields) {
-        if (field in obj) {
-            filtered[field] = obj[field];
-        }
-    }
-    return filtered;
-}
 
 /**
  * Create metadata for responses
@@ -167,19 +151,21 @@ export function createMetadata(
 
 export function formatSearchResponse(
     response: SearchResponse,
-    format: 'json' | 'markdown' = 'json',
-    fields?: string[]
+    format: 'json' | 'markdown' = 'json'
 ): string {
-    const filtered = {
-        ...response,
-        results: response.results.map(r => filterFields(r, fields))
-    };
-
     if (format === 'json') {
-        return JSON.stringify(filtered, null, 2);
+        // For minimal responses, omit metadata wrapper to save tokens
+        if (response.detail_level === 'minimal') {
+            return JSON.stringify({
+                query: response.query,
+                language: response.language,
+                results: response.results
+            }, null, 2);
+        }
+        return JSON.stringify(response, null, 2);
     }
 
-    // Markdown format
+    // Markdown format - optimized, no emojis
     let md = `# Search Results: "${response.query}"\n\n`;
     md += `Language: ${response.language} | Found: ${response.results.length} section(s)\n\n`;
 
@@ -187,6 +173,10 @@ export function formatSearchResponse(
         const result = response.results[i];
         md += `## ${i + 1}. ${result.section_number}: ${result.title}\n\n`;
         md += `Page ${result.page} | Similarity: ${(result.similarity * 100).toFixed(1)}%\n\n`;
+
+        if ('content_preview' in result) {
+            md += `**Preview:** ${(result as any).content_preview}\n\n`;
+        }
 
         if (result.content) {
             md += `**Content:**\n${result.content}\n\n`;
@@ -206,16 +196,10 @@ export function formatSearchResponse(
 
 export function formatSectionResponse(
     response: SectionResponse,
-    format: 'json' | 'markdown' = 'json',
-    fields?: string[]
+    format: 'json' | 'markdown' = 'json'
 ): string {
-    const filtered = {
-        ...response,
-        section: filterFields(response.section, fields)
-    };
-
     if (format === 'json') {
-        return JSON.stringify(filtered, null, 2);
+        return JSON.stringify(response, null, 2);
     }
 
     // Markdown format
@@ -275,19 +259,13 @@ export function formatSectionResponse(
 
 export function formatSectionListResponse(
     response: SectionListResponse,
-    format: 'json' | 'markdown' = 'json',
-    fields?: string[]
+    format: 'json' | 'markdown' = 'json'
 ): string {
-    const filtered = {
-        ...response,
-        sections: response.sections.map(s => filterFields(s, fields))
-    };
-
     if (format === 'json') {
-        return JSON.stringify(filtered, null, 2);
+        return JSON.stringify(response, null, 2);
     }
 
-    // Markdown format
+    // Markdown format - optimized, no emojis
     let md = `# Table of Contents\n\n`;
     md += `Language: ${response.language}`;
     if (response.parent) {
@@ -300,7 +278,7 @@ export function formatSectionListResponse(
 
     for (const section of response.sections) {
         const indent = '  '.repeat(section.depth);
-        const marker = section.has_subsections ? '▸' : '•';
+        const marker = section.has_subsections ? '>' : '-';
         md += `${indent}${marker} **${section.section_number}** ${section.title}\n`;
     }
 
@@ -313,16 +291,10 @@ export function formatSectionListResponse(
 
 export function formatCodeSearchResponse(
     response: CodeSearchResponse,
-    format: 'json' | 'markdown' = 'json',
-    fields?: string[]
+    format: 'json' | 'markdown' = 'json'
 ): string {
-    const filtered = {
-        ...response,
-        results: response.results.map(r => filterFields(r, fields))
-    };
-
     if (format === 'json') {
-        return JSON.stringify(filtered, null, 2);
+        return JSON.stringify(response, null, 2);
     }
 
     // Markdown format
