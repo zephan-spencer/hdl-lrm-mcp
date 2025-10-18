@@ -15,7 +15,7 @@ import {
 } from '../utils/formatters.js';
 
 export async function handleGetSection(db: HDLDatabase, args: any) {
-    const { section_number, language, include_code = false, format = 'json', fields } = args;
+    const { section_number, language, include_code = false, format = 'json' } = args;
 
     const section = await db.getSection(section_number, language, include_code);
 
@@ -107,14 +107,14 @@ export async function handleGetSection(db: HDLDatabase, args: any) {
         content: [
             {
                 type: 'text' as const,
-                text: formatSectionResponse(sectionResponse, format, fields),
+                text: formatSectionResponse(sectionResponse, format),
             },
         ],
     };
 }
 
 export async function handleListSections(db: HDLDatabase, args: any) {
-    const { language, parent = null, max_depth = 2, search_filter, format = 'json', fields } = args;
+    const { language, parent = null, max_depth = 2, search_filter, format = 'json' } = args;
 
     const sections = await db.listSections(language, parent, max_depth, search_filter);
 
@@ -182,7 +182,7 @@ export async function handleListSections(db: HDLDatabase, args: any) {
         content: [
             {
                 type: 'text' as const,
-                text: formatSectionListResponse(listResponse, format, fields),
+                text: formatSectionListResponse(listResponse, format),
             },
         ],
     };

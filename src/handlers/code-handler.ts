@@ -13,7 +13,7 @@ import {
 } from '../utils/formatters.js';
 
 export async function handleSearchCode(db: HDLDatabase, args: any) {
-    const { query, language, max_results = 10, format = 'json', fields } = args;
+    const { query, language, max_results = 10, format = 'json', include_context = false } = args;
 
     const results = await db.searchCode(query, language, max_results);
 
@@ -52,20 +52,25 @@ export async function handleSearchCode(db: HDLDatabase, args: any) {
         };
     }
 
-    // Get section details for each code example to add page numbers and context
+    // Get section details for each code example to add page numbers and optionally context
     const enrichedResults = await Promise.all(
         results.map(async (result) => {
             const section = await db.getSection(result.section_number, language, false);
-            return {
+            const enriched: any = {
                 section_number: result.section_number,
                 section_title: result.section_title,
                 page_start: section?.page_start,
                 page_end: section?.page_end,
                 code: result.code,
-                description: result.description || undefined,
-                // Add first 200 chars of section content as context
-                context: section?.content ? section.content.substring(0, 200) + '...' : undefined
+                description: result.description || undefined
             };
+
+            // Only add context if explicitly requested (saves tokens)
+            if (include_context && section?.content) {
+                enriched.context = section.content.substring(0, 200) + '...';
+            }
+
+            return enriched;
         })
     );
 
@@ -81,7 +86,7 @@ export async function handleSearchCode(db: HDLDatabase, args: any) {
         content: [
             {
                 type: 'text' as const,
-                text: formatCodeSearchResponse(codeResponse, format, fields),
+                text: formatCodeSearchResponse(codeResponse, format),
             },
         ],
     };

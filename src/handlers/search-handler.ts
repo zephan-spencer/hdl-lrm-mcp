@@ -18,8 +18,7 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
         language,
         max_results = 5,
         format = 'json',
-        fields,
-        max_content_length
+        detail_level = 'minimal'
     } = args;
 
     // Use semantic search
@@ -68,24 +67,33 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
         };
     }
 
-    // Build structured response
+    // Build structured response based on detail_level
     const searchResponse: SearchResponse = {
         query,
         language,
-        metadata: createMetadata('search_lrm', results.length, results.length),
+        detail_level,
+        metadata: detail_level === 'minimal' ? undefined : createMetadata('search_lrm', results.length, results.length),
         results: results.map(r => {
-            let content = r.content;
-            if (max_content_length && content.length > max_content_length) {
-                content = content.substring(0, max_content_length) + '...';
-            }
-
-            return {
+            // Minimal: only section_number, title, page, similarity
+            const result: any = {
                 section_number: r.section_number,
                 title: r.title,
                 page: r.page_start,
-                similarity: r.similarity,
-                content
+                similarity: r.similarity
             };
+
+            // Preview: add first 200 chars of content
+            if (detail_level === 'preview' || detail_level === 'full') {
+                result.content_preview = r.content.substring(0, 200) + (r.content.length > 200 ? '...' : '');
+            }
+
+            // Full: add complete content
+            if (detail_level === 'full') {
+                result.content = r.content;
+                delete result.content_preview; // Remove preview if full content included
+            }
+
+            return result;
         })
     };
 
@@ -93,7 +101,7 @@ export async function handleSearchLRM(db: HDLDatabase, args: any) {
         content: [
             {
                 type: 'text' as const,
-                text: formatSearchResponse(searchResponse, format, fields),
+                text: formatSearchResponse(searchResponse, format),
             },
         ],
     };
