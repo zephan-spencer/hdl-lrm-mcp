@@ -66,6 +66,8 @@ export interface CodeSearchResult {
     description: string | null;
     section_number: string;
     section_title: string;
+    page_start: number;
+    page_end: number;
 }
 
 export interface SemanticSearchResult {
@@ -319,7 +321,9 @@ export class HDLDatabase {
                 ce.code,
                 ce.description,
                 s.section_number,
-                s.title AS section_title
+                s.title AS section_title,
+                s.page_start,
+                s.page_end
             FROM code_examples ce
             JOIN sections s ON ce.section_id = s.id
             WHERE ce.language = ?

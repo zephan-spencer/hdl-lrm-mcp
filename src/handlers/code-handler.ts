@@ -13,7 +13,7 @@ import {
 } from '../utils/formatters.js';
 
 export async function handleSearchCode(db: HDLDatabase, args: any) {
-    const { query, language, max_results = 10, format = 'json', include_context = false } = args;
+    const { query, language, max_results = 10, format = 'json', include_context = false, include_metadata = true, verbose_errors = true } = args;
 
     const results = await db.searchCode(query, language, max_results);
 
@@ -46,39 +46,43 @@ export async function handleSearchCode(db: HDLDatabase, args: any) {
             content: [
                 {
                     type: 'text' as const,
-                    text: formatErrorResponse(errorResponse, format),
+                    text: formatErrorResponse(errorResponse, format, verbose_errors),
                 },
             ],
         };
     }
 
-    // Get section details for each code example to add page numbers and optionally context
-    const enrichedResults = await Promise.all(
-        results.map(async (result) => {
-            const section = await db.getSection(result.section_number, language, false);
-            const enriched: any = {
-                section_number: result.section_number,
-                section_title: result.section_title,
-                page_start: section?.page_start,
-                page_end: section?.page_end,
-                code: result.code,
-                description: result.description || undefined
-            };
-
-            // Only add context if explicitly requested (saves tokens)
-            if (include_context && section?.content) {
-                enriched.context = section.content.substring(0, 200) + '...';
-            }
-
-            return enriched;
-        })
-    );
+    // Page numbers now come directly from the query (no N+1 lookups needed!)
+    // Only fetch sections if context is requested
+    const enrichedResults = include_context
+        ? await Promise.all(
+            results.map(async (result) => {
+                const section = await db.getSection(result.section_number, language, false);
+                return {
+                    section_number: result.section_number,
+                    section_title: result.section_title,
+                    page_start: result.page_start,
+                    page_end: result.page_end,
+                    code: result.code,
+                    description: result.description || undefined,
+                    context: section?.content ? section.content.substring(0, 200) + '...' : undefined
+                };
+            })
+        )
+        : results.map(result => ({
+            section_number: result.section_number,
+            section_title: result.section_title,
+            page_start: result.page_start,
+            page_end: result.page_end,
+            code: result.code,
+            description: result.description || undefined
+        }));
 
     // Build structured response
     const codeResponse: CodeSearchResponse = {
         query,
         language,
-        metadata: createMetadata('search_code', enrichedResults.length, enrichedResults.length),
+        metadata: include_metadata ? createMetadata('search_code', enrichedResults.length, enrichedResults.length) : undefined as any,
         results: enrichedResults
     };
 
