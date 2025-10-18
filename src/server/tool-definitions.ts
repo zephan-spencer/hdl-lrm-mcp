@@ -12,7 +12,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'search_lrm',
             description:
-                'Semantic search across LRM content using AI embeddings. Finds conceptually similar sections even if exact keywords don\'t match. Supports JSON format for agent-native structured responses.',
+                'Semantic search across LRM content using AI embeddings. OPTIMIZED FOR AGENT WORKFLOWS: Returns minimal data by default for efficient discovery. Use detail_level="minimal" (default) to find relevant sections with minimal tokens, then call get_section() for full content. Only use detail_level="full" if you need complete content immediately.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -25,9 +25,15 @@ export function getToolDefinitions(): Tool[] {
                         enum: SUPPORTED_LANGUAGES,
                         description: 'HDL language: verilog, systemverilog, or vhdl',
                     },
+                    detail_level: {
+                        type: 'string',
+                        enum: ['minimal', 'preview', 'full'],
+                        description: 'Response detail level: "minimal" (default) returns only section_number, title, page, similarity (~80 bytes/result); "preview" adds 200-char content preview (~280 bytes/result); "full" returns complete content (~1000-3000 bytes/result)',
+                        default: 'minimal',
+                    },
                     max_results: {
                         type: 'number',
-                        description: 'Maximum number of results (default: 5, max: 20)',
+                        description: 'Maximum number of results (default: 5, max: 20). With detail_level="minimal", you can request more results (e.g., 10-15) at minimal token cost.',
                         default: 5,
                     },
                     format: {
@@ -36,15 +42,6 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Response format: "json" for structured agent-native responses (default), or "markdown" for human-readable text',
                         default: 'json',
                     },
-                    fields: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Optional: only return specified fields (e.g., ["section_number", "title", "page"] for discovery queries with 80-95% token savings). Available fields: section_number, title, page, similarity, content, depth',
-                    },
-                    max_content_length: {
-                        type: 'number',
-                        description: 'Maximum characters per section content (optional). Use to control response size. Default: return full content.',
-                    },
                 },
                 required: ['query', 'language'],
             },
@@ -52,7 +49,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'get_section',
             description:
-                'Retrieve complete content of a specific section from the LRM. Supports JSON format for structured responses.',
+                'Retrieve complete content of a specific section from the LRM. Always returns full section details including content, metadata, and navigation (parent/siblings/subsections). Use this after search_lrm to get complete information about sections you discovered.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -76,11 +73,6 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
                     },
-                    fields: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Optional: only return specified fields. Available: section_number, title, language, page_start, page_end, depth, content, parent_section, sibling_sections, subsections, code_examples',
-                    },
                 },
                 required: ['section_number', 'language'],
             },
@@ -88,7 +80,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'list_sections',
             description:
-                'Get table of contents for a language. Returns hierarchical section list. Supports JSON format for structured responses.',
+                'Get table of contents for a language. Returns hierarchical section list, optimized for browsing. Returns minimal data by default (section_number, title, depth, has_subsections).',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -116,11 +108,6 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
                     },
-                    fields: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Optional: only return specified fields. Available: section_number, title, depth, has_subsections',
-                    },
                 },
                 required: ['language'],
             },
@@ -128,7 +115,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'search_code',
             description:
-                'Find code examples matching a pattern or keyword. Supports JSON format for structured responses.',
+                'Find code examples matching a pattern or keyword. Returns code, section reference, and page numbers. Context is optional to save tokens.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -146,16 +133,16 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Maximum results (default: 10)',
                         default: 10,
                     },
+                    include_context: {
+                        type: 'boolean',
+                        description: 'Include 200-char section context preview (default: false to save tokens)',
+                        default: false,
+                    },
                     format: {
                         type: 'string',
                         enum: ['json', 'markdown'],
                         description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
                         default: 'json',
-                    },
-                    fields: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Optional: only return specified fields. Available: section_number, section_title, page_start, page_end, code, description, context',
                     },
                 },
                 required: ['query', 'language'],
