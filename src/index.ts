@@ -3,7 +3,7 @@
  * Athens HDL MCP - Entry Point
  *
  * MCP server providing AI agents with efficient access to HDL Language Reference Manuals
- * (Verilog, SystemVerilog, VHDL) via semantic search and AI summarization.
+ * (Verilog, SystemVerilog, VHDL) via semantic search.
  *
  * Tools:
  *   - search_lrm: Semantic search across LRM content
