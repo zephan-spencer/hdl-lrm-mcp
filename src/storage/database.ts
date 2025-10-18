@@ -5,8 +5,7 @@
  */
 
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
-import { exec, spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -75,15 +74,6 @@ export interface SemanticSearchResult {
     content: string;
     page_start: number;
     similarity: number;
-}
-
-export interface SemanticSearchResultWithSummary extends SemanticSearchResult {
-    summary?: string;
-    key_points?: string[];
-}
-
-export interface CodeSearchResultWithExplanation extends CodeSearchResult {
-    explanation?: string;
 }
 
 // =============================================================================
@@ -233,7 +223,8 @@ export class HDLDatabase {
     async listSections(
         language: string,
         parent: string | null = null,
-        maxDepth: number = 2
+        maxDepth: number = 2,
+        searchFilter?: string
     ): Promise<SectionInfo[]> {
         this.ensureConnected();
 
@@ -256,9 +247,16 @@ export class HDLDatabase {
                 WHERE language = ?
                     AND parent_section = ?
                     AND depth <= ?
-                ORDER BY section_number
             `;
             params = [language, parent, maxDepth];
+
+            // Add search filter if provided
+            if (searchFilter) {
+                sql += ` AND title LIKE ?`;
+                params.push(`%${searchFilter}%`);
+            }
+
+            sql += ` ORDER BY section_number`;
         } else {
             // List top-level sections (use minimum depth instead of parent_section IS NULL)
             // This fixes the bug where parser doesn't create parent sections
@@ -276,9 +274,31 @@ export class HDLDatabase {
                 WHERE language = ?
                     AND depth = (SELECT MIN(depth) FROM sections WHERE language = ?)
                     AND depth <= ?
-                ORDER BY section_number
             `;
             params = [language, language, maxDepth];
+
+            // Add search filter if provided (search at any depth when filtering)
+            if (searchFilter) {
+                sql = `
+                    SELECT
+                        section_number AS number,
+                        title,
+                        depth,
+                        EXISTS(
+                            SELECT 1 FROM sections s2
+                            WHERE s2.parent_section = sections.section_number
+                                AND s2.language = sections.language
+                        ) AS has_subsections
+                    FROM sections
+                    WHERE language = ?
+                        AND title LIKE ?
+                        AND depth <= ?
+                    ORDER BY depth, section_number
+                `;
+                params = [language, `%${searchFilter}%`, maxDepth];
+            } else {
+                sql += ` ORDER BY section_number`;
+            }
         }
 
         return this.all(sql, params);
@@ -399,7 +419,7 @@ export class HDLDatabase {
             return {
                 section_number: row.section_number,
                 title: row.title,
-                content: row.content.substring(0, 500), // Truncate for preview
+                content: row.content, // Full content - let handler/agent decide on length
                 page_start: row.page_start,
                 similarity: similarity
             };
@@ -584,134 +604,6 @@ export class HDLDatabase {
         }
 
         return result.embedding;
-    }
-
-    /**
-     * Call Python summarizer to generate summaries or key points
-     */
-    private async callSummarizer(
-        text: string,
-        mode: 'summary' | 'keypoints' | 'explain',
-        options?: {
-            language?: string;
-            maxLength?: number;
-            maxPoints?: number;
-        }
-    ): Promise<any> {
-        const execPromise = promisify(exec);
-        const scriptPath = join(__dirname, '..', '..', 'src', 'summarization', 'summarize.py');
-        const pythonPath = this.getPythonPath();
-
-        // Build command
-        let command = `"${pythonPath}" "${scriptPath}" "${text.replace(/"/g, '\\"')}" --mode ${mode}`;
-
-        if (options?.language) {
-            command += ` --language ${options.language}`;
-        }
-        if (options?.maxLength) {
-            command += ` --max-length ${options.maxLength}`;
-        }
-        if (options?.maxPoints) {
-            command += ` --max-points ${options.maxPoints}`;
-        }
-
-        try {
-            const { stdout } = await execPromise(command);
-            const result = JSON.parse(stdout);
-
-            if (result.error) {
-                throw new Error(result.error);
-            }
-
-            return result;
-        } catch (error) {
-            // Log error but don't fail the whole operation
-            console.error(`[Summarizer] Failed to generate ${mode}:`, error);
-            return null;
-        }
-    }
-
-    /**
-     * Semantic search with optional AI-generated summaries
-     */
-    async semanticSearchByTextWithSummaries(
-        queryText: string,
-        language: string,
-        maxResults: number = 5,
-        includeSummary: boolean = true,
-        model: string = 'Qwen/Qwen3-Embedding-0.6B'
-    ): Promise<SemanticSearchResultWithSummary[]> {
-        // Get base semantic search results
-        const baseResults = await this.semanticSearchByText(queryText, language, maxResults, model);
-
-        if (!includeSummary) {
-            return baseResults;
-        }
-
-        // Add summaries and key points to each result
-        const resultsWithSummaries = await Promise.all(
-            baseResults.map(async (result) => {
-                try {
-                    // Generate summary and key points in parallel
-                    const [summaryResult, keyPointsResult] = await Promise.all([
-                        this.callSummarizer(result.content, 'summary', { maxLength: 150 }),
-                        this.callSummarizer(result.content, 'keypoints', { maxPoints: 3 })
-                    ]);
-
-                    return {
-                        ...result,
-                        summary: summaryResult?.summary || undefined,
-                        key_points: keyPointsResult?.key_points || undefined
-                    };
-                } catch (error) {
-                    // If summarization fails, return result without summary
-                    console.error(`[Summarizer] Failed for section ${result.section_number}:`, error);
-                    return result;
-                }
-            })
-        );
-
-        return resultsWithSummaries;
-    }
-
-    /**
-     * Search code examples with optional AI explanations
-     */
-    async searchCodeWithExplanations(
-        query: string,
-        language: string,
-        maxResults: number = 10,
-        explain: boolean = false
-    ): Promise<CodeSearchResultWithExplanation[]> {
-        // Get base code search results
-        const baseResults = await this.searchCode(query, language, maxResults);
-
-        if (!explain) {
-            return baseResults;
-        }
-
-        // Add explanations to each code example
-        const resultsWithExplanations = await Promise.all(
-            baseResults.map(async (result) => {
-                try {
-                    const explanationResult = await this.callSummarizer(
-                        result.code,
-                        'explain',
-                        { language, maxLength: 100 }
-                    );
-
-                    return {
-                        ...result,
-                        explanation: explanationResult?.explanation || undefined
-                    };
-                } catch (error) {
-                    console.error(`[Summarizer] Failed to explain code:`, error);
-                    return result;
-                }
-            })
-        );
-
-        return resultsWithExplanations;
     }
 
     private cosineSimilarity(a: number[], b: number[]): number {

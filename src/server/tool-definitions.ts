@@ -12,7 +12,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'search_lrm',
             description:
-                'Semantic search across LRM content using AI embeddings. Finds conceptually similar sections even if exact keywords don\'t match.',
+                'Semantic search across LRM content using AI embeddings. Finds conceptually similar sections even if exact keywords don\'t match. Supports JSON format for agent-native structured responses.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -30,10 +30,20 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Maximum number of results (default: 5, max: 20)',
                         default: 5,
                     },
-                    include_summary: {
-                        type: 'boolean',
-                        description: 'Include AI-generated summary and key points (default: true). Set to false for full content only.',
-                        default: true,
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'markdown'],
+                        description: 'Response format: "json" for structured agent-native responses (default), or "markdown" for human-readable text',
+                        default: 'json',
+                    },
+                    fields: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional: only return specified fields (e.g., ["section_number", "title", "page"] for discovery queries with 80-95% token savings). Available fields: section_number, title, page, similarity, content, depth',
+                    },
+                    max_content_length: {
+                        type: 'number',
+                        description: 'Maximum characters per section content (optional). Use to control response size. Default: return full content.',
                     },
                 },
                 required: ['query', 'language'],
@@ -42,7 +52,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'get_section',
             description:
-                'Retrieve complete content of a specific section from the LRM.',
+                'Retrieve complete content of a specific section from the LRM. Supports JSON format for structured responses.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -60,6 +70,17 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Include code examples from this section',
                         default: false,
                     },
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'markdown'],
+                        description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
+                        default: 'json',
+                    },
+                    fields: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional: only return specified fields. Available: section_number, title, language, page_start, page_end, depth, content, parent_section, sibling_sections, subsections, code_examples',
+                    },
                 },
                 required: ['section_number', 'language'],
             },
@@ -67,7 +88,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'list_sections',
             description:
-                'Get table of contents for a language. Returns hierarchical section list.',
+                'Get table of contents for a language. Returns hierarchical section list. Supports JSON format for structured responses.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -85,6 +106,21 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Maximum depth to display (default: 2)',
                         default: 2,
                     },
+                    search_filter: {
+                        type: 'string',
+                        description: 'Filter sections by keyword in title (e.g., "timing", "assignment"). Searches across all depths when used.',
+                    },
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'markdown'],
+                        description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
+                        default: 'json',
+                    },
+                    fields: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional: only return specified fields. Available: section_number, title, depth, has_subsections',
+                    },
                 },
                 required: ['language'],
             },
@@ -92,7 +128,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'search_code',
             description:
-                'Find code examples matching a pattern or keyword.',
+                'Find code examples matching a pattern or keyword. Supports JSON format for structured responses.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -110,10 +146,16 @@ export function getToolDefinitions(): Tool[] {
                         description: 'Maximum results (default: 10)',
                         default: 10,
                     },
-                    explain: {
-                        type: 'boolean',
-                        description: 'Include AI-generated explanation of what each code example demonstrates (default: false)',
-                        default: false,
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'markdown'],
+                        description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
+                        default: 'json',
+                    },
+                    fields: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Optional: only return specified fields. Available: section_number, section_title, page_start, page_end, code, description, context',
                     },
                 },
                 required: ['query', 'language'],
@@ -122,7 +164,7 @@ export function getToolDefinitions(): Tool[] {
         {
             name: 'get_table',
             description:
-                'Retrieve tables from a specific section.',
+                'Retrieve tables from a specific section. Supports JSON format for structured responses.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -134,6 +176,12 @@ export function getToolDefinitions(): Tool[] {
                         type: 'string',
                         enum: SUPPORTED_LANGUAGES,
                         description: 'HDL language',
+                    },
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'markdown'],
+                        description: 'Response format: "json" for structured responses (default), or "markdown" for human-readable text',
+                        default: 'json',
                     },
                 },
                 required: ['section_number', 'language'],

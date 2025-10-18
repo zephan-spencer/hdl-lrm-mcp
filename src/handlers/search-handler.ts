@@ -4,74 +4,96 @@
  */
 
 import { HDLDatabase } from '../storage/database.js';
+import {
+    createMetadata,
+    formatSearchResponse,
+    formatErrorResponse,
+    SearchResponse,
+    ErrorResponse,
+} from '../utils/formatters.js';
 
 export async function handleSearchLRM(db: HDLDatabase, args: any) {
-    const { query, language, max_results = 5, include_summary = true } = args;
-
-    // Use semantic search with optional summaries
-    const results = await db.semanticSearchByTextWithSummaries(
+    const {
         query,
         language,
-        Math.min(max_results, 20),
-        include_summary
+        max_results = 5,
+        format = 'json',
+        fields,
+        max_content_length
+    } = args;
+
+    // Use semantic search
+    const results = await db.semanticSearchByText(
+        query,
+        language,
+        Math.min(max_results, 20)
     );
 
     if (results.length === 0) {
+        // Structured error response
+        const errorResponse: ErrorResponse = {
+            error: 'no_results',
+            message: `No results found for "${query}" in ${language} LRM.`,
+            suggestions: [
+                {
+                    action: 'broaden_search',
+                    description: 'Try broader or different search terms'
+                },
+                {
+                    action: 'use_tool',
+                    tool: 'list_sections',
+                    params: { language, search_filter: query },
+                    description: 'Use list_sections() with search_filter to browse by topic'
+                },
+                {
+                    action: 'semantic_search',
+                    description: 'Search for related concepts or synonyms'
+                },
+                {
+                    action: 'generate_embeddings',
+                    description: `If embeddings are missing, generate them with: python src/embeddings/generate_embeddings.py --language ${language}`
+                }
+            ],
+            query,
+            language
+        };
+
         return {
             content: [
                 {
                     type: 'text' as const,
-                    text: `No results found for "${query}" in ${language} LRM.\n\nNote: Ensure embeddings have been generated for ${language} using:\nsource .venv/bin/activate\npython src/embeddings/generate_embeddings.py --language ${language}`,
+                    text: formatErrorResponse(errorResponse, format),
                 },
             ],
         };
     }
 
-    // Format response
-    let response = `# Semantic Search Results: "${query}"\n\n`;
-    response += `**Language:** ${language}\n`;
-    response += `**Search Type:** AI Semantic Search${include_summary ? ' + AI Summary' : ''}\n`;
-    response += `**Found:** ${results.length} conceptually similar section(s)\n\n`;
-    response += '---\n\n';
-
-    for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        response += `## ${i + 1}. Section ${result.section_number}: ${result.title}\n\n`;
-        response += `📍 Page ${result.page_start} | 🎯 Similarity: ${(result.similarity * 100).toFixed(1)}%\n\n`;
-
-        // Add AI summary if available
-        if (result.summary) {
-            response += `**AI Summary:**\n${result.summary}\n\n`;
-        }
-
-        // Add key points if available
-        if (result.key_points && result.key_points.length > 0) {
-            response += `**Key Points:**\n`;
-            for (const point of result.key_points) {
-                response += `• ${point}\n`;
+    // Build structured response
+    const searchResponse: SearchResponse = {
+        query,
+        language,
+        metadata: createMetadata('search_lrm', results.length, results.length),
+        results: results.map(r => {
+            let content = r.content;
+            if (max_content_length && content.length > max_content_length) {
+                content = content.substring(0, max_content_length) + '...';
             }
-            response += '\n';
-        }
 
-        // Add preview (truncated)
-        if (include_summary) {
-            response += `**Full Preview:**\n${result.content.substring(0, 200)}...\n\n`;
-        } else {
-            response += `**Preview:**\n${result.content}...\n\n`;
-        }
-
-        // Add action hints
-        response += `→ Use get_section("${result.section_number}") for complete details\n`;
-        response += `→ Use search_code() for examples\n\n`;
-
-        response += '---\n\n';
-    }
+            return {
+                section_number: r.section_number,
+                title: r.title,
+                page: r.page_start,
+                similarity: r.similarity,
+                content
+            };
+        })
+    };
 
     return {
         content: [
             {
                 type: 'text' as const,
-                text: response,
+                text: formatSearchResponse(searchResponse, format, fields),
             },
         ],
     };
